@@ -215,7 +215,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74f89d248799e3f15f91b70917f65381062a01bb8e222700ea0e5a7ff9785f9c"
 dependencies = [
  "byteorder",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -250,12 +250,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "cfg_aliases"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 
 [[package]]
 name = "cocoa"
@@ -2008,9 +2002,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.5.4"
+version = "1.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d07a8629359eb56f1e2fb1652bb04212c072a87ba68546a04065d525673ac461"
+checksum = "d83f127d94bdbcda4c8cc2e50f6f84f4b611f69c902699ca385a39c3a75f9ff1"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2028,9 +2022,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.6.25"
+version = "0.6.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
+checksum = "49b3de9ec5dc0a3417da371aab17d729997c15010e7fd24ff707773a33bddb64"
 
 [[package]]
 name = "remove_dir_all"
@@ -2413,9 +2407,9 @@ dependencies = [
 
 [[package]]
 name = "tao"
-version = "0.7.0"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b6a3359088d4c4735a13f933202f4ecd91f5991b41a8eb757f2449c044ce925"
+checksum = "df895eb66ff23d1824055114d6fbdd2c297bf70ad85349a4adaee0f8b2a860d1"
 dependencies = [
  "bitflags",
  "cairo-rs",
@@ -2477,13 +2471,12 @@ dependencies = [
 
 [[package]]
 name = "tauri"
-version = "1.0.0-rc.4"
+version = "1.0.0-rc.9"
 dependencies = [
  "anyhow",
  "bincode",
- "cfg_aliases",
+ "cocoa",
  "dirs-next",
- "either",
  "embed_plist",
  "flate2",
  "futures",
@@ -2491,8 +2484,10 @@ dependencies = [
  "glib",
  "glob",
  "gtk",
+ "heck 0.4.0",
  "http",
  "ignore",
+ "objc",
  "once_cell",
  "percent-encoding",
  "rand 0.8.5",
@@ -2512,17 +2507,20 @@ dependencies = [
  "thiserror",
  "tokio",
  "url",
- "uuid",
+ "uuid 1.1.1",
+ "webkit2gtk",
+ "webview2-com",
  "windows",
 ]
 
 [[package]]
 name = "tauri-build"
-version = "1.0.0-rc.4"
+version = "1.0.0-rc.8"
 dependencies = [
  "anyhow",
  "cargo_toml",
  "quote",
+ "semver 1.0.5",
  "serde_json",
  "tauri-codegen",
  "tauri-utils",
@@ -2531,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-codegen"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.6"
 dependencies = [
  "base64",
  "brotli",
@@ -2544,13 +2542,13 @@ dependencies = [
  "sha2",
  "tauri-utils",
  "thiserror",
- "uuid",
+ "uuid 1.1.1",
  "walkdir",
 ]
 
 [[package]]
 name = "tauri-macros"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.6"
 dependencies = [
  "heck 0.4.0",
  "proc-macro2",
@@ -2562,7 +2560,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime"
-version = "0.3.3"
+version = "0.5.0"
 dependencies = [
  "gtk",
  "http",
@@ -2572,20 +2570,23 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "thiserror",
- "uuid",
+ "uuid 1.1.1",
  "webview2-com",
  "windows",
 ]
 
 [[package]]
 name = "tauri-runtime-wry"
-version = "0.3.3"
+version = "0.5.0"
 dependencies = [
+ "cocoa",
  "gtk",
+ "percent-encoding",
  "rand 0.8.5",
  "tauri-runtime",
  "tauri-utils",
- "uuid",
+ "uuid 1.1.1",
+ "webkit2gtk",
  "webview2-com",
  "windows",
  "wry",
@@ -2593,7 +2594,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.6"
 dependencies = [
  "brotli",
  "ctor",
@@ -2602,13 +2603,13 @@ dependencies = [
  "html5ever",
  "json-patch",
  "kuchiki",
+ "memchr",
  "phf 0.10.1",
  "proc-macro2",
  "quote",
  "serde",
  "serde_json",
  "serde_with",
- "serialize-to-javascript",
  "thiserror",
  "url",
  "walkdir",
@@ -2854,6 +2855,12 @@ name = "uuid"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+
+[[package]]
+name = "uuid"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6d5d669b51467dcf7b2f1a796ce0f955f05f01cafda6c19d6e95f730df29238"
 dependencies = [
  "getrandom 0.2.4",
 ]
@@ -3123,9 +3130,9 @@ dependencies = [
 
 [[package]]
 name = "wry"
-version = "0.14.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fd09ffc86ecea0a0d5f50cc8e4a8121a1bfc0b0825a160f86ac39e86979344c"
+checksum = "6ca96d1cadf815f81c060c516a6a1f95937e6104672a6f2117826c2b9941628a"
 dependencies = [
  "block",
  "cocoa",
