@@ -1,5 +1,100 @@
 # Changelog
 
+## \[0.11.1]
+
+- Add missing allowlist config for `set_cursor_grab`, `set_cursor_visible`, `set_cursor_icon` and `set_cursor_position` APIs.
+  - Bumped due to a bump in tauri-utils.
+  - [c764408d](https://www.github.com/tauri-apps/tauri/commit/c764408da7fae123edd41115bda42fa75a4731d2) fix: Add missing allowlist config for cursor apis, closes [#5207](https://www.github.com/tauri-apps/tauri/pull/5207) ([#5211](https://www.github.com/tauri-apps/tauri/pull/5211)) on 2022-09-16
+
+## \[0.11.0]
+
+- Ignore window events with unknown IDs.
+  - [0668dd42](https://www.github.com/tauri-apps/tauri/commit/0668dd42204b163f11aaf31f45106c8551f15942) fix(tauri-runtime-wry): ignore events on unknown windows on 2022-08-29
+- Implement theme APIs for Linux.
+  - [f21cbecd](https://www.github.com/tauri-apps/tauri/commit/f21cbecdeb3571ac4ad971b9a865ff62a131a176) feat(core): implement theme APIs for Linux ([#4808](https://www.github.com/tauri-apps/tauri/pull/4808)) on 2022-08-02
+- Changed `windows` map to be stored in a `RefCell` instead of a `Mutex`.
+  - [64546cb9](https://www.github.com/tauri-apps/tauri/commit/64546cb9cca2fe56cf81cfc4aaf85c4e1d58877c) refactor: use RefCell instead of Mutex for windows map, closes [#4870](https://www.github.com/tauri-apps/tauri/pull/4870) ([#4909](https://www.github.com/tauri-apps/tauri/pull/4909)) on 2022-08-10
+- Added APIs to create a system tray at runtime.
+  - [4d063ae9](https://www.github.com/tauri-apps/tauri/commit/4d063ae9ee9538cd6fa5e01b80070c6edf8eaeb9) feat(core): create system tray at runtime, closes [#2278](https://www.github.com/tauri-apps/tauri/pull/2278) ([#4862](https://www.github.com/tauri-apps/tauri/pull/4862)) on 2022-08-09
+- Update windows to 0.39.0 and webview2-com to 0.19.1.
+  - [e6d9b670](https://www.github.com/tauri-apps/tauri/commit/e6d9b670b0b314ed667b0e164f2c8d27048e678f) refactor: remove unneeded focus code ([#5065](https://www.github.com/tauri-apps/tauri/pull/5065)) on 2022-09-03
+
+## \[0.10.2]
+
+- Disable drag-n-drop of tao based on `fileDropEnabled` value.
+  - [a1d569bb](https://www.github.com/tauri-apps/tauri/commit/a1d569bbc9cfdd58258916df594911e1c512a75e) fix(core): disable tao's drag-n-drop based on `fileDropEnabled`, closes [#4580](https://www.github.com/tauri-apps/tauri/pull/4580) ([#4592](https://www.github.com/tauri-apps/tauri/pull/4592)) on 2022-07-05
+- Added option to disable tray menu on left click on macOS.
+  - [f8a3becb](https://www.github.com/tauri-apps/tauri/commit/f8a3becb287942db7f7b551b5db6aeb5a2e939ee) feat(core): add option to disable tray menu on left click, closes [#4584](https://www.github.com/tauri-apps/tauri/pull/4584) ([#4587](https://www.github.com/tauri-apps/tauri/pull/4587)) on 2022-07-05
+
+## \[0.10.1]
+
+- Fixes a deadlock on the file drop handler.
+  - [23a48007](https://www.github.com/tauri-apps/tauri/commit/23a48007c0df7346fa45c76dfaf9235a157f59ec) fix(tauri-runtime-wry): deadlock on file drop, closes [#4527](https://www.github.com/tauri-apps/tauri/pull/4527) ([#4535](https://www.github.com/tauri-apps/tauri/pull/4535)) on 2022-06-30
+- Send theme value only once on the getter function implementation on macOS.
+  - [63841c10](https://www.github.com/tauri-apps/tauri/commit/63841c10609c3d7337ba6cd68ae126b18987014d) fix(tauri-runtime-wry): do not send theme twice on macOS, closes [#4532](https://www.github.com/tauri-apps/tauri/pull/4532) ([#4540](https://www.github.com/tauri-apps/tauri/pull/4540)) on 2022-06-30
+- Fixes a deadlock when the window focus change on Windows.
+  - [185b0e31](https://www.github.com/tauri-apps/tauri/commit/185b0e314ece9563cd7c83a16466b2b8b9167eb3) fix(tauri-runtime-wry): deadlock when window focus change, closes [#4533](https://www.github.com/tauri-apps/tauri/pull/4533) ([#4539](https://www.github.com/tauri-apps/tauri/pull/4539)) on 2022-06-30
+
+## \[0.10.0]
+
+- Implement `raw_window_handle::HasRawWindowHandle` on Linux.
+  - [3efbc67f](https://www.github.com/tauri-apps/tauri/commit/3efbc67f7469ce65a2d9ea4ff2b60b51d2a36aa5) feat: implement `raw_window_handle` on Linux ([#4469](https://www.github.com/tauri-apps/tauri/pull/4469)) on 2022-06-26
+- Moved the window and menu event listeners to the window struct.
+  - [46196fe9](https://www.github.com/tauri-apps/tauri/commit/46196fe922f4f1b38057155c6113236cfa4b3597) refactor(tauri-runtime-wry): move window and menu listeners to window ([#4485](https://www.github.com/tauri-apps/tauri/pull/4485)) on 2022-06-27
+- Refactored the `tauri-runtime-wry` plugin interface.
+  - [e39e2999](https://www.github.com/tauri-apps/tauri/commit/e39e2999e0ab1843a8195ba83aea3d6de705c3d8) refactor(tauri-runtime-wry): enhance plugin interface ([#4476](https://www.github.com/tauri-apps/tauri/pull/4476)) on 2022-06-27
+- Removed the `hwnd` and `ns_window` functions from `Dispatch` in favor of `raw_window_handle`.
+  - [3efbc67f](https://www.github.com/tauri-apps/tauri/commit/3efbc67f7469ce65a2d9ea4ff2b60b51d2a36aa5) feat: implement `raw_window_handle` on Linux ([#4469](https://www.github.com/tauri-apps/tauri/pull/4469)) on 2022-06-26
+- The theme API is now implemented on macOS 10.14+.
+  - [6d94ce42](https://www.github.com/tauri-apps/tauri/commit/6d94ce42353204a02fe9c82ed397d349439f75ef) feat(core): theme is now implemented on macOS ([#4380](https://www.github.com/tauri-apps/tauri/pull/4380)) on 2022-06-17
+- Suppress unused variable warning in release builds.
+  - [45981851](https://www.github.com/tauri-apps/tauri/commit/45981851e35119266c1a079e1ff27a39f1fdfaed) chore(lint): unused variable warnings for release builds ([#4411](https://www.github.com/tauri-apps/tauri/pull/4411)) on 2022-06-22
+- Update tao to 0.12 and wry to 0.19.
+  - [f6edc6df](https://www.github.com/tauri-apps/tauri/commit/f6edc6df29b1c45b483fa87c481a3b95730b131b) chore(deps): update tao to 0.12, wry to 0.19, closes [#3220](https://www.github.com/tauri-apps/tauri/pull/3220) ([#4502](https://www.github.com/tauri-apps/tauri/pull/4502)) on 2022-06-28
+- Fixes deadlocks when using window setters in the main thread.
+  - [123f6e69](https://www.github.com/tauri-apps/tauri/commit/123f6e69f60ca6d4b2fd738ca3ff5cf016d8e814) fix(tauri-runtime-wry): release windows lock immediately, closes [#4390](https://www.github.com/tauri-apps/tauri/pull/4390) ([#4392](https://www.github.com/tauri-apps/tauri/pull/4392)) on 2022-06-19
+
+## \[0.9.0]
+
+- Upgrade to `stable`!
+  - Bumped due to a bump in tauri-utils.
+  - [f4bb30cc](https://www.github.com/tauri-apps/tauri/commit/f4bb30cc73d6ba9b9ef19ef004dc5e8e6bb901d3) feat(covector): prepare for v1 ([#4351](https://www.github.com/tauri-apps/tauri/pull/4351)) on 2022-06-15
+
+## \[0.8.1]
+
+- Add `Menu::os_default` which will create a menu filled with default menu items and submenus.
+  - Bumped due to a bump in tauri-runtime.
+  - [4c4acc30](https://www.github.com/tauri-apps/tauri/commit/4c4acc3094218dd9cee0f1ad61810c979e0b41fa) feat: implement `Default` for `Menu`, closes [#2398](https://www.github.com/tauri-apps/tauri/pull/2398) ([#4291](https://www.github.com/tauri-apps/tauri/pull/4291)) on 2022-06-15
+
+## \[0.8.0]
+
+- Removed `TrayIcon` and renamed `WindowIcon` to `Icon`, a shared type for both icons.
+  - [4ce8e228](https://www.github.com/tauri-apps/tauri/commit/4ce8e228134cd3f22973b74ef26ca0d165fbbbd9) refactor(core): use `Icon` for tray icons ([#4342](https://www.github.com/tauri-apps/tauri/pull/4342)) on 2022-06-14
+
+## \[0.7.0]
+
+- **Breaking change**: Removed the `gtk-tray` and `ayatana-tray` Cargo features.
+  - [6216eb49](https://www.github.com/tauri-apps/tauri/commit/6216eb49e72863bfb6d4c9edb8827b21406ac393) refactor(core): drop `ayatana-tray` and `gtk-tray` Cargo features ([#4247](https://www.github.com/tauri-apps/tauri/pull/4247)) on 2022-06-02
+
+## \[0.6.0]
+
+- Account the monitor position when centering a window.
+  - [a7a9fde1](https://www.github.com/tauri-apps/tauri/commit/a7a9fde16fb7c35d48d4f97e83ff95b8baf9e090) fix(core): account for monitor position when centering window ([#4166](https://www.github.com/tauri-apps/tauri/pull/4166)) on 2022-05-21
+- Update `windows-rs` to `0.37.0`, which requires Rust 1.61.0+.
+  - [2326be39](https://www.github.com/tauri-apps/tauri/commit/2326be39821890cdd4de76e7029a531424dcb26f) feat(core): update windows-rs to 0.37.0 ([#4199](https://www.github.com/tauri-apps/tauri/pull/4199)) on 2022-05-24
+
+## \[0.5.2]
+
+- Use the event loop proxy to create a window so it doesn't deadlock on Windows.
+  - [61e37652](https://www.github.com/tauri-apps/tauri/commit/61e37652b931520424d6a93a134e67893703d992) fix(core): deadlock when creating window from IPC handler, closes [#4121](https://www.github.com/tauri-apps/tauri/pull/4121) ([#4123](https://www.github.com/tauri-apps/tauri/pull/4123)) on 2022-05-13
+
+## \[0.5.1]
+
+- Added the `plugin` method to the `Wry` runtime, allowing extensions to the event loop.
+  - [c8e0e5b9](https://www.github.com/tauri-apps/tauri/commit/c8e0e5b97d542e549b37be08b545515c862af0e5) feat(tauri-runtime-wry): add plugin API ([#4094](https://www.github.com/tauri-apps/tauri/pull/4094)) on 2022-05-10
+- Update wry to 0.16.2 and webkit2gtk to 0.18.0.
+  - [71a553b7](https://www.github.com/tauri-apps/tauri/commit/71a553b715312e2bcceb963c83e42cffca7a63bc) chore(deps): update wry to 0.16.2, webkit2gtk to 0.18.0 ([#4099](https://www.github.com/tauri-apps/tauri/pull/4099)) on 2022-05-10
+
 ## \[0.5.0]
 
 - The file drop event payloads are now percent-decoded.

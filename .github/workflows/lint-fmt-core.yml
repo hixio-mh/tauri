@@ -1,4 +1,4 @@
-# Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+# Copyright 2019-2022 Tauri Programme within The Commons Conservancy
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-License-Identifier: MIT
 
@@ -13,6 +13,7 @@ on:
     paths:
       - '.github/workflows/lint-fmt-core.yml'
       - 'core/**'
+      - '!core/tauri/scripts/**'
       - 'examples/**'
 
 env:
@@ -34,7 +35,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: stable
           override: true
           components: rustfmt
 
@@ -50,12 +51,8 @@ jobs:
         clippy:
           - { args: '', key: 'empty' }
           - {
-              args: '--features compression,wry,isolation,custom-protocol,api-all,cli,updater,system-tray,ayatana-tray,http-multipart',
+              args: '--features compression,wry,isolation,custom-protocol,api-all,cli,updater,system-tray,windows7-compat,http-multipart',
               key: 'all'
-            }
-          - {
-              args: '--no-default-features --features ayatana-tray',
-              key: 'no-default'
             }
           - { args: '--features custom-protocol', key: 'custom-protocol' }
           - { args: '--features api-all', key: 'api-all' }
@@ -85,7 +82,7 @@ jobs:
       - name: Cache cargo state
         uses: actions/cache@v2
         env:
-          cache-name: cargo-state
+          cache-name: cargo_state
         with:
           path: |
             ~/.cargo/registry

@@ -1,17 +1,19 @@
-// Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-use crate::helpers::{
-  config::get as get_config, framework::infer_from_package_json as infer_framework,
+use crate::{
+  helpers::{config::get as get_config, framework::infer_from_package_json as infer_framework},
+  interface::rust::get_workspace_dir,
+  Result,
 };
-use crate::Result;
 use clap::Parser;
 use colored::Colorize;
 use serde::Deserialize;
 
 use std::{
   collections::HashMap,
+  fmt::Write,
   fs::{read_dir, read_to_string},
   panic,
   path::{Path, PathBuf},
@@ -75,10 +77,12 @@ struct CargoManifest {
   dependencies: HashMap<String, CargoManifestDependency>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum PackageManager {
   Npm,
   Pnpm,
   Yarn,
+  Berry,
 }
 
 #[derive(Debug, Parser)]
@@ -165,6 +169,23 @@ fn npm_latest_version(pm: &PackageManager, name: &str) -> crate::Result<Option<S
         Ok(None)
       }
     }
+    PackageManager::Berry => {
+      let mut cmd = cross_command("yarn");
+
+      let output = cmd
+        .arg("npm")
+        .arg("info")
+        .arg(name)
+        .args(["--fields", "version", "--json"])
+        .output()?;
+      if output.status.success() {
+        let info: crate::PackageJson =
+          serde_json::from_reader(std::io::Cursor::new(output.stdout)).unwrap();
+        Ok(info.version)
+      } else {
+        Ok(None)
+      }
+    }
     PackageManager::Npm => {
       let mut cmd = cross_command("npm");
 
@@ -195,29 +216,46 @@ fn npm_package_version<P: AsRef<Path>>(
   name: &str,
   app_dir: P,
 ) -> crate::Result<Option<String>> {
-  let output = match pm {
-    PackageManager::Yarn => cross_command("yarn")
-      .args(&["list", "--pattern"])
-      .arg(name)
-      .args(&["--depth", "0"])
-      .current_dir(app_dir)
-      .output()?,
-    PackageManager::Npm => cross_command("npm")
-      .arg("list")
-      .arg(name)
-      .args(&["version", "--depth", "0"])
-      .current_dir(app_dir)
-      .output()?,
-    PackageManager::Pnpm => cross_command("pnpm")
-      .arg("list")
-      .arg(name)
-      .args(&["--parseable", "--depth", "0"])
-      .current_dir(app_dir)
-      .output()?,
+  let (output, regex) = match pm {
+    PackageManager::Yarn => (
+      cross_command("yarn")
+        .args(&["list", "--pattern"])
+        .arg(name)
+        .args(&["--depth", "0"])
+        .current_dir(app_dir)
+        .output()?,
+      None,
+    ),
+    PackageManager::Berry => (
+      cross_command("yarn")
+        .arg("info")
+        .arg(name)
+        .current_dir(app_dir)
+        .output()?,
+      Some(regex::Regex::new("Version: ([\\da-zA-Z\\-\\.]+)").unwrap()),
+    ),
+    PackageManager::Npm => (
+      cross_command("npm")
+        .arg("list")
+        .arg(name)
+        .args(&["version", "--depth", "0"])
+        .current_dir(app_dir)
+        .output()?,
+      None,
+    ),
+    PackageManager::Pnpm => (
+      cross_command("pnpm")
+        .arg("list")
+        .arg(name)
+        .args(&["--parseable", "--depth", "0"])
+        .current_dir(app_dir)
+        .output()?,
+      None,
+    ),
   };
   if output.status.success() {
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let regex = regex::Regex::new("@([\\da-zA-Z\\-\\.]+)").unwrap();
+    let regex = regex.unwrap_or_else(|| regex::Regex::new("@([\\da-zA-Z\\-\\.]+)").unwrap());
     Ok(
       regex
         .captures_iter(&stdout)
@@ -248,8 +286,12 @@ fn get_version(command: &str, args: &[&str]) -> crate::Result<Option<String>> {
 
 #[cfg(windows)]
 fn webview2_version() -> crate::Result<Option<String>> {
+  let powershell_path = std::env::var("SYSTEMROOT").map_or_else(
+    |_| "powershell.exe".to_string(),
+    |p| format!("{p}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"),
+  );
   // check 64bit machine-wide installation
-  let output = Command::new("powershell")
+  let output = Command::new(&powershell_path)
       .args(&["-NoProfile", "-Command"])
       .arg("Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' | ForEach-Object {$_.pv}")
       .output()?;
@@ -259,7 +301,7 @@ fn webview2_version() -> crate::Result<Option<String>> {
     ));
   }
   // check 32bit machine-wide installation
-  let output = Command::new("powershell")
+  let output = Command::new(&powershell_path)
         .args(&["-NoProfile", "-Command"])
         .arg("Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' | ForEach-Object {$_.pv}")
         .output()?;
@@ -269,7 +311,7 @@ fn webview2_version() -> crate::Result<Option<String>> {
     ));
   }
   // check user-wide installation
-  let output = Command::new("powershell")
+  let output = Command::new(&powershell_path)
       .args(&["-NoProfile", "-Command"])
       .arg("Get-ItemProperty -Path 'HKCU:\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' | ForEach-Object {$_.pv}")
       .output()?;
@@ -425,9 +467,9 @@ fn crate_version(
                 is_git = true;
                 let mut v = format!("git:{}", g);
                 if let Some(branch) = p.branch {
-                  v.push_str(&format!("&branch={}", branch));
+                  let _ = write!(v, "&branch={}", branch);
                 } else if let Some(rev) = p.rev {
-                  v.push_str(&format!("#{}", rev));
+                  let _ = write!(v, "#{}", rev);
                 }
                 v
               } else {
@@ -439,12 +481,12 @@ fn crate_version(
         };
 
         let lock_version = match (lock, crate_lock_packages.is_empty()) {
-          (Some(_lock), true) => crate_lock_packages
+          (Some(_lock), false) => crate_lock_packages
             .iter()
             .map(|p| p.version.clone())
             .collect::<Vec<String>>()
             .join(", "),
-          (Some(_lock), false) => "unknown lockfile".to_string(),
+          (Some(_lock), true) => "unknown lockfile".to_string(),
           _ => "no lockfile".to_string(),
         };
 
@@ -530,7 +572,7 @@ impl VersionBlock {
       let target_version = semver::Version::parse(self.target_version.as_str()).unwrap();
       if version < target_version {
         print!(
-          "({}, latest: {})",
+          " ({}, latest: {})",
           "outdated".red(),
           self.target_version.green()
         );
@@ -613,6 +655,10 @@ pub fn command(_options: Options) -> Result<()> {
     .unwrap_or_default();
   panic::set_hook(hook);
 
+  let yarn_version = get_version("yarn", &[])
+    .unwrap_or_default()
+    .unwrap_or_default();
+
   let metadata = version_metadata()?;
   VersionBlock::new(
     "Node.js",
@@ -640,13 +686,7 @@ pub fn command(_options: Options) -> Result<()> {
       .unwrap_or_default(),
   )
   .display();
-  VersionBlock::new(
-    "yarn",
-    get_version("yarn", &[])
-      .unwrap_or_default()
-      .unwrap_or_default(),
-  )
-  .display();
+  VersionBlock::new("yarn", &yarn_version).display();
   VersionBlock::new(
     "rustup",
     get_version("rustup", &[])
@@ -695,20 +735,23 @@ pub fn command(_options: Options) -> Result<()> {
 
   let mut package_manager = PackageManager::Npm;
   if let Some(app_dir) = &app_dir {
-    let file_names = read_dir(app_dir)
+    let app_dir_entries = read_dir(app_dir)
       .unwrap()
-      .filter(|e| {
-        e.as_ref()
-          .unwrap()
-          .metadata()
-          .unwrap()
-          .file_type()
-          .is_file()
-      })
       .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
       .collect::<Vec<String>>();
-    package_manager = get_package_manager(&file_names)?;
+    package_manager = get_package_manager(&app_dir_entries)?;
   }
+
+  if package_manager == PackageManager::Yarn
+    && yarn_version
+      .chars()
+      .next()
+      .map(|c| c > '1')
+      .unwrap_or_default()
+  {
+    package_manager = PackageManager::Berry;
+  }
+
   VersionBlock::new(
     format!("{} {}", "@tauri-apps/cli", "[NPM]".dimmed()),
     metadata.js_cli.version,
@@ -751,12 +794,10 @@ pub fn command(_options: Options) -> Result<()> {
         } else {
           None
         };
-      let lock: Option<CargoLock> =
-        if let Ok(lock_contents) = read_to_string(tauri_dir.join("Cargo.lock")) {
-          toml::from_str(&lock_contents).ok()
-        } else {
-          None
-        };
+      let lock: Option<CargoLock> = get_workspace_dir()
+        .ok()
+        .and_then(|p| read_to_string(p.join("Cargo.lock")).ok())
+        .and_then(|s| toml::from_str(&s).ok());
 
       for (dep, label) in [
         ("tauri", format!("{} {}", "tauri", "[RUST]".dimmed())),
@@ -852,12 +893,12 @@ pub fn command(_options: Options) -> Result<()> {
   Ok(())
 }
 
-fn get_package_manager<T: AsRef<str>>(file_names: &[T]) -> crate::Result<PackageManager> {
+fn get_package_manager<T: AsRef<str>>(app_dir_entries: &[T]) -> crate::Result<PackageManager> {
   let mut use_npm = false;
   let mut use_pnpm = false;
   let mut use_yarn = false;
 
-  for name in file_names {
+  for name in app_dir_entries {
     if name.as_ref() == "package-lock.json" {
       use_npm = true;
     } else if name.as_ref() == "pnpm-lock.yaml" {
@@ -886,7 +927,7 @@ fn get_package_manager<T: AsRef<str>>(file_names: &[T]) -> crate::Result<Package
 
   if found.len() > 1 {
     return Err(anyhow::anyhow!(
-        "only one package mangager should be used, but found {}\nplease remove unused package manager lock files",
+        "only one package manager should be used, but found {}\nplease remove unused package manager lock files",
         found.join(" and ")
       ));
   }

@@ -1,4 +1,4 @@
-// Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -127,6 +127,8 @@ pub enum WindowManagerCmd {
   SetCursorIcon(CursorIcon),
   #[cfg(window_set_cursor_position)]
   SetCursorPosition(Position),
+  #[cfg(window_set_ignore_cursor_events)]
+  SetIgnoreCursorEvents(bool),
   #[cfg(window_start_dragging)]
   StartDragging,
   #[cfg(window_print)]
@@ -154,7 +156,7 @@ pub fn into_allowlist_error(variant: &str) -> crate::Error {
       crate::Error::ApiNotAllowlisted("window > maximize and window > unmaximize".to_string())
     }
     "minimize" => crate::Error::ApiNotAllowlisted("window > minimize".to_string()),
-    "nnminimize" => crate::Error::ApiNotAllowlisted("window > unminimize".to_string()),
+    "unminimize" => crate::Error::ApiNotAllowlisted("window > unminimize".to_string()),
     "show" => crate::Error::ApiNotAllowlisted("window > show".to_string()),
     "hide" => crate::Error::ApiNotAllowlisted("window > hide".to_string()),
     "close" => crate::Error::ApiNotAllowlisted("window > close".to_string()),
@@ -172,6 +174,9 @@ pub fn into_allowlist_error(variant: &str) -> crate::Error {
     "setCursorIcon" => crate::Error::ApiNotAllowlisted("window > setCursorIcon".to_string()),
     "setCursorPosition" => {
       crate::Error::ApiNotAllowlisted("window > setCursorPosition".to_string())
+    }
+    "setIgnoreCursorEvents" => {
+      crate::Error::ApiNotAllowlisted("window > setIgnoreCursorEvents".to_string())
     }
     "startDragging" => crate::Error::ApiNotAllowlisted("window > startDragging".to_string()),
     "print" => crate::Error::ApiNotAllowlisted("window > print".to_string()),
@@ -204,8 +209,13 @@ impl Cmd {
   ) -> super::Result<()> {
     let label = options.label.clone();
     let url = options.url.clone();
+    let file_drop_enabled = options.file_drop_enabled;
 
     let mut builder = crate::window::Window::builder(&context.window, label, url);
+    if !file_drop_enabled {
+      builder = builder.disable_file_drop_handler();
+    }
+
     builder.window_builder =
       <<R::Dispatcher as Dispatch<crate::EventLoopMessage>>::WindowBuilder>::with_config(*options);
     builder.build().map_err(crate::error::into_anyhow)?;
@@ -309,6 +319,10 @@ impl Cmd {
       WindowManagerCmd::SetCursorIcon(icon) => window.set_cursor_icon(icon)?,
       #[cfg(window_set_cursor_position)]
       WindowManagerCmd::SetCursorPosition(position) => window.set_cursor_position(position)?,
+      #[cfg(window_set_ignore_cursor_events)]
+      WindowManagerCmd::SetIgnoreCursorEvents(ignore_cursor) => {
+        window.set_ignore_cursor_events(ignore_cursor)?
+      }
       #[cfg(window_start_dragging)]
       WindowManagerCmd::StartDragging => window.start_dragging()?,
       #[cfg(window_print)]

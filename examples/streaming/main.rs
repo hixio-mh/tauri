@@ -1,4 +1,4 @@
-// Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -44,9 +44,9 @@ fn main() {
       let mut response = ResponseBuilder::new();
       // get the wanted path
       #[cfg(target_os = "windows")]
-      let path = request.uri().replace("stream://localhost/", "");
+      let path = request.uri().strip_prefix("stream://localhost/").unwrap();
       #[cfg(not(target_os = "windows"))]
-      let path = request.uri().replace("stream://", "");
+      let path = request.uri().strip_prefix("stream://").unwrap();
       let path = percent_encoding::percent_decode(path.as_bytes())
         .decode_utf8_lossy()
         .to_string();

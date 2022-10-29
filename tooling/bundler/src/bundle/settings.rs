@@ -1,10 +1,15 @@
-// Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+// Copyright 2016-2019 Cargo-Bundle developers <https://github.com/burtonageo/cargo-bundle>
+// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
 use super::category::AppCategory;
 use crate::bundle::{common, platform::target_triple};
-use tauri_utils::resources::{external_binaries, ResourcePaths};
+pub use tauri_utils::config::WebviewInstallMode;
+use tauri_utils::{
+  config::BundleType,
+  resources::{external_binaries, ResourcePaths},
+};
 
 use std::{
   collections::HashMap,
@@ -31,6 +36,19 @@ pub enum PackageType {
   Dmg,
   /// The Updater bundle.
   Updater,
+}
+
+impl From<BundleType> for PackageType {
+  fn from(bundle: BundleType) -> Self {
+    match bundle {
+      BundleType::Deb => Self::Deb,
+      BundleType::AppImage => Self::AppImage,
+      BundleType::Msi => Self::WindowsMsi,
+      BundleType::App => Self::MacOsBundle,
+      BundleType::Dmg => Self::Dmg,
+      BundleType::Updater => Self::Updater,
+    }
+  }
 }
 
 impl PackageType {
@@ -108,7 +126,7 @@ pub struct PackageSettings {
 }
 
 /// The updater settings.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct UpdaterSettings {
   /// Whether the updater is active or not.
   pub active: bool,
@@ -118,6 +136,8 @@ pub struct UpdaterSettings {
   pub pubkey: String,
   /// Display built-in dialog or use event system if disabled.
   pub dialog: bool,
+  /// Args to pass to `msiexec.exe` to run the updater on Windows.
+  pub msiexec_args: Option<&'static [&'static str]>,
 }
 
 /// The Linux debian bundle settings.
@@ -168,7 +188,7 @@ pub struct MacOsSettings {
 /// Configuration for a target language for the WiX build.
 #[derive(Debug, Clone, Default)]
 pub struct WixLanguageConfig {
-  /// The path to a locale (`.wxl`) file. See https://wixtoolset.org/documentation/manual/v3/howtos/ui_and_localization/build_a_localized_version.html.
+  /// The path to a locale (`.wxl`) file. See <https://wixtoolset.org/documentation/manual/v3/howtos/ui_and_localization/build_a_localized_version.html>.
   pub locale_path: Option<PathBuf>,
 }
 
@@ -185,7 +205,7 @@ impl Default for WixLanguage {
 /// Settings specific to the WiX implementation.
 #[derive(Clone, Debug, Default)]
 pub struct WixSettings {
-  /// The app languages to build. See https://docs.microsoft.com/en-us/windows/win32/msi/localizing-the-error-and-actiontext-tables.
+  /// The app languages to build. See <https://docs.microsoft.com/en-us/windows/win32/msi/localizing-the-error-and-actiontext-tables>.
   pub language: WixLanguage,
   /// By default, the bundler uses an internal template.
   /// This option allows you to define your own wix file.
@@ -202,7 +222,7 @@ pub struct WixSettings {
   pub feature_refs: Vec<String>,
   /// The Merge element ids you want to reference from the fragments.
   pub merge_refs: Vec<String>,
-  /// Disables the Webview2 runtime installation after app install.
+  /// Disables the Webview2 runtime installation after app install. Will be removed in v2, use [`WindowsSettings::webview_install_mode`] instead.
   pub skip_webview_install: bool,
   /// The path to the LICENSE file.
   pub license: Option<PathBuf>,
@@ -218,6 +238,8 @@ pub struct WixSettings {
 
   /// The required dimensions are 493px × 312px.
   pub dialog_image_path: Option<PathBuf>,
+  /// Enables FIPS compliant algorithms.
+  pub fips_compliant: bool,
 }
 
 /// The Windows bundle settings.
@@ -231,12 +253,18 @@ pub struct WindowsSettings {
   pub timestamp_url: Option<String>,
   /// Whether to use Time-Stamp Protocol (TSP, a.k.a. RFC 3161) for the timestamp server. Your code signing provider may
   /// use a TSP timestamp server, like e.g. SSL.com does. If so, enable TSP by setting to true.
-  pub tsp: Option<bool>,
+  pub tsp: bool,
   /// WiX configuration.
   pub wix: Option<WixSettings>,
   /// The path to the application icon. Defaults to `./icons/icon.ico`.
   pub icon_path: PathBuf,
+  /// The installation mode for the Webview2 runtime.
+  pub webview_install_mode: WebviewInstallMode,
   /// Path to the webview fixed runtime to use.
+  ///
+  /// Overwrites [`Self::webview_install_mode`] if set.
+  ///
+  /// Will be removed in v2, use [`Self::webview_install_mode`] instead.
   pub webview_fixed_runtime_path: Option<PathBuf>,
   /// Validates a second app installation, blocking the user from installing an older version if set to `false`.
   ///
@@ -252,9 +280,10 @@ impl Default for WindowsSettings {
       digest_algorithm: None,
       certificate_thumbprint: None,
       timestamp_url: None,
-      tsp: None,
+      tsp: false,
       wix: None,
       icon_path: PathBuf::from("icons/icon.ico"),
+      webview_install_mode: Default::default(),
       webview_fixed_runtime_path: None,
       allow_downgrades: true,
     }
@@ -266,6 +295,9 @@ impl Default for WindowsSettings {
 pub struct BundleSettings {
   /// the app's identifier.
   pub identifier: Option<String>,
+  /// The app's publisher. Defaults to the second element in the identifier string.
+  /// Currently maps to the Manufacturer property of the Windows Installer.
+  pub publisher: Option<String>,
   /// the app's icon list.
   pub icon: Option<Vec<String>>,
   /// the app's resources to bundle.
@@ -283,7 +315,7 @@ pub struct BundleSettings {
   /// the app's long description.
   pub long_description: Option<String>,
   // Bundles for other binaries:
-  /// Configuration map for the possible [bin] apps to bundle.
+  /// Configuration map for the apps to bundle.
   pub bin: Option<HashMap<String, BundleSettings>>,
   /// External binaries to add to the bundle.
   ///
@@ -298,7 +330,7 @@ pub struct BundleSettings {
   /// If you are building a universal binary for MacOS, the bundler expects
   /// your external binary to also be universal, and named after the target triple,
   /// e.g. `sqlite3-universal-apple-darwin`. See
-  /// https://developer.apple.com/documentation/apple-silicon/building-a-universal-macos-binary
+  /// <https://developer.apple.com/documentation/apple-silicon/building-a-universal-macos-binary>
   pub external_bin: Option<Vec<String>>,
   /// Debian-specific settings.
   pub deb: DebianSettings,
@@ -445,7 +477,7 @@ impl SettingsBuilder {
   ///
   /// Package settings will be read from Cargo.toml.
   ///
-  /// Bundle settings will be read from from $TAURI_DIR/tauri.conf.json if it exists and fallback to Cargo.toml's [package.metadata.bundle].
+  /// Bundle settings will be read from $TAURI_DIR/tauri.conf.json if it exists and fallback to Cargo.toml's [package.metadata.bundle].
   pub fn build(self) -> crate::Result<Settings> {
     let target = if let Some(t) = self.target {
       t
@@ -581,6 +613,11 @@ impl Settings {
     self.bundle_settings.identifier.as_deref().unwrap_or("")
   }
 
+  /// Returns the bundle's identifier
+  pub fn publisher(&self) -> Option<&str> {
+    self.bundle_settings.publisher.as_deref()
+  }
+
   /// Returns an iterator over the icon files to be used for this bundle.
   pub fn icon_files(&self) -> ResourcePaths<'_> {
     match self.bundle_settings.icon {
@@ -698,6 +735,11 @@ impl Settings {
   /// Returns the Windows settings.
   pub fn windows(&self) -> &WindowsSettings {
     &self.bundle_settings.windows
+  }
+
+  /// Returns the Updater settings.
+  pub fn updater(&self) -> Option<&UpdaterSettings> {
+    self.bundle_settings.updater.as_ref()
   }
 
   /// Is update enabled

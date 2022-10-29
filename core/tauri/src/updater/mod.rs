@@ -1,4 +1,4 @@
-// Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -26,11 +26,11 @@
 //!         "https://releases.myapp.com/{target}}/{current_version}}"
 //!     ],
 //!     "dialog": true,
-//!     "pubkey": ""
+//!     "pubkey": "YOUR_UPDATER_PUBLIC_KEY_HERE"
 //! }
 //! ```
 //!
-//! The required keys are "active" and "endpoints", others are optional.
+//! The required keys are "active", "endpoints" and "pubkey"; others are optional.
 //!
 //! "active" must be a boolean. By default, it's set to false.
 //!
@@ -38,7 +38,7 @@
 //!
 //! "dialog" if present must be a boolean. By default, it's set to true. If enabled, [events](#events) are turned-off as the updater will handle everything. If you need the custom events, you MUST turn off the built-in dialog.
 //!
-//! "pubkey" if present must be a valid public-key generated with Tauri cli. See [Signing updates](#signing-updates).
+//! "pubkey" must be a valid public-key generated with Tauri cli. See [Signing updates](#signing-updates).
 //!
 //! ## Update Requests
 //!
@@ -64,7 +64,7 @@
 //!
 //! If the user accepts, the download and install are initialized. The user will be then prompted to restart the application.
 //!
-//! ## Javascript API
+//! ## JavaScript API
 //!
 //! **Attention, you need to _disable built-in dialog_ in your [tauri configuration](#configuration), otherwise, events aren't emitted and the javascript API will NOT work.**
 //!
@@ -107,7 +107,7 @@
 //!   });
 //! ```
 //!
-//! #### Javascript
+//! #### JavaScript
 //! ```js
 //! import { emit } from "@tauri-apps/api/event";
 //! emit("tauri://update");
@@ -136,7 +136,7 @@
 //!   tauri::RunEvent::Updater(updater_event) => {
 //!     match updater_event {
 //!       tauri::UpdaterEvent::UpdateAvailable { body, date, version } => {
-//!         println!("update available {} {} {}", body, date, version);
+//!         println!("update available {} {:?} {}", body, date, version);
 //!       }
 //!       _ => (),
 //!     }
@@ -145,7 +145,7 @@
 //! });
 //! ```
 //!
-//! #### Javascript
+//! #### JavaScript
 //! ```js
 //! import { listen } from "@tauri-apps/api/event";
 //! listen("tauri://update-available", function (res) {
@@ -180,7 +180,7 @@
 //!   });
 //! ```
 //!
-//! #### Javascript
+//! #### JavaScript
 //! ```js
 //! import { emit } from "@tauri-apps/api/event";
 //! emit("tauri://update-install");
@@ -209,7 +209,7 @@
 //! });
 //! ```
 //!
-//! #### Javascript
+//! #### JavaScript
 //!
 //! Event : `tauri://update-download-progress`
 //!
@@ -246,7 +246,7 @@
 //!   tauri::RunEvent::Updater(updater_event) => {
 //!     match updater_event {
 //!       tauri::UpdaterEvent::UpdateAvailable { body, date, version } => {
-//!         println!("update available {} {} {}", body, date, version);
+//!         println!("update available {} {:?} {}", body, date, version);
 //!       }
 //!       tauri::UpdaterEvent::Pending => {
 //!         println!("update is pending!");
@@ -270,7 +270,7 @@
 //! });
 //! ```
 //!
-//! #### Javascript
+//! #### JavaScript
 //! Event : `tauri://update-status`
 //!
 //! Emitted data:
@@ -308,7 +308,7 @@
 //! }
 //! ```
 //!
-//! The only required keys are "url" and "version", the others are optional.
+//! The required keys are "url", "version" and "signature"; the others are optional.
 //!
 //! "pub_date" if present must be formatted according to ISO 8601.
 //!
@@ -449,15 +449,26 @@ mod error;
 use std::time::Duration;
 
 use http::header::{HeaderName, HeaderValue};
+use semver::Version;
+use time::OffsetDateTime;
 
-pub use self::error::Error;
+pub use self::{core::RemoteRelease, error::Error};
 /// Alias for [`std::result::Result`] using our own [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
-use crate::{
-  api::dialog::blocking::ask, runtime::EventLoopProxy, AppHandle, EventLoopMessage, Manager,
-  Runtime, UpdaterEvent,
-};
+use crate::{runtime::EventLoopProxy, AppHandle, EventLoopMessage, Manager, Runtime, UpdaterEvent};
+
+#[cfg(desktop)]
+use crate::api::dialog::blocking::ask;
+
+#[cfg(mobile)]
+fn ask<R: Runtime>(
+  _parent_window: Option<&crate::Window<R>>,
+  _title: impl AsRef<str>,
+  _message: impl AsRef<str>,
+) -> bool {
+  true
+}
 
 /// Check for new updates
 pub const EVENT_CHECK_UPDATE: &str = "tauri://update";
@@ -508,7 +519,7 @@ struct DownloadProgressEvent {
 #[derive(Clone, serde::Serialize)]
 struct UpdateManifest {
   version: String,
-  date: String,
+  date: Option<String>,
   body: String,
 }
 
@@ -526,7 +537,85 @@ impl<R: Runtime> UpdateBuilder<R> {
     self
   }
 
-  /// Set the target name. Represents the string that is looked up on the updater API or response JSON.
+  /// Sets the current platform's target name for the updater.
+  ///
+  /// The target is injected in the endpoint URL by replacing `{{target}}`.
+  /// Note that this does not affect the `{{arch}}` variable.
+  ///
+  /// If the updater response JSON includes the `platforms` field,
+  /// that object must contain a value for the target key.
+  ///
+  /// By default Tauri uses `$OS_NAME` as the replacement for `{{target}}`
+  /// and `$OS_NAME-$ARCH` as the key in the `platforms` object,
+  /// where `$OS_NAME` is the current operating system name "linux", "windows" or "darwin")
+  /// and `$ARCH` is one of the supported architectures ("i686", "x86_64", "armv7" or "aarch64").
+  ///
+  /// See [`Builder::updater_target`](crate::Builder#method.updater_target) for a way to set the target globally.
+  ///
+  /// # Examples
+  ///
+  /// ## Use a macOS Universal binary target name
+  ///
+  /// In this example, we set the updater target only on macOS.
+  /// On other platforms, we set the default target.
+  /// Note that `{{target}}` will be replaced with `darwin-universal`,
+  /// but `{{arch}}` is still the running platform's architecture.
+  ///
+  /// ```no_run
+  /// tauri::Builder::default()
+  ///   .setup(|app| {
+  ///     let handle = app.handle();
+  ///     tauri::async_runtime::spawn(async move {
+  ///       let builder = tauri::updater::builder(handle).target(if cfg!(target_os = "macos") {
+  ///         "darwin-universal".to_string()
+  ///       } else {
+  ///         tauri::updater::target().unwrap()
+  ///       });
+  ///       match builder.check().await {
+  ///         Ok(update) => {}
+  ///         Err(error) => {}
+  ///       }
+  ///     });
+  ///     Ok(())
+  ///   });
+  /// ```
+  ///
+  /// ## Append debug information to the target
+  ///
+  /// This allows you to provide updates for both debug and release applications.
+  ///
+  /// ```no_run
+  /// tauri::Builder::default()
+  ///   .setup(|app| {
+  ///     let handle = app.handle();
+  ///     tauri::async_runtime::spawn(async move {
+  ///       let kind = if cfg!(debug_assertions) { "debug" } else { "release" };
+  ///       let builder = tauri::updater::builder(handle).target(format!("{}-{}", tauri::updater::target().unwrap(), kind));
+  ///       match builder.check().await {
+  ///         Ok(update) => {}
+  ///         Err(error) => {}
+  ///       }
+  ///     });
+  ///     Ok(())
+  ///   });
+  /// ```
+  ///
+  /// ## Use the platform's target triple
+  ///
+  /// ```no_run
+  /// tauri::Builder::default()
+  ///   .setup(|app| {
+  ///     let handle = app.handle();
+  ///     tauri::async_runtime::spawn(async move {
+  ///       let builder = tauri::updater::builder(handle).target(tauri::utils::platform::target_triple().unwrap());
+  ///       match builder.check().await {
+  ///         Ok(update) => {}
+  ///         Err(error) => {}
+  ///       }
+  ///     });
+  ///     Ok(())
+  ///   });
+  /// ```
   pub fn target(mut self, target: impl Into<String>) -> Self {
     self.inner = self.inner.target(target);
     self
@@ -548,7 +637,10 @@ impl<R: Runtime> UpdateBuilder<R> {
   ///     Ok(())
   ///   });
   /// ```
-  pub fn should_install<F: FnOnce(&str, &str) -> bool + Send + 'static>(mut self, f: F) -> Self {
+  pub fn should_install<F: FnOnce(&Version, &RemoteRelease) -> bool + Send + 'static>(
+    mut self,
+    f: F,
+  ) -> Self {
     self.inner = self.inner.should_install(f);
     self
   }
@@ -604,14 +696,14 @@ impl<R: Runtime> UpdateBuilder<R> {
               EVENT_UPDATE_AVAILABLE,
               UpdateManifest {
                 body: body.clone(),
-                date: update.date.clone(),
+                date: update.date.map(|d| d.to_string()),
                 version: update.version.clone(),
               },
             );
             let _ = handle.create_proxy().send_event(EventLoopMessage::Updater(
               UpdaterEvent::UpdateAvailable {
                 body,
-                date: update.date.clone(),
+                date: update.date,
                 version: update.version.clone(),
               },
             ));
@@ -659,7 +751,7 @@ impl<R: Runtime> UpdateResponse<R> {
   }
 
   /// The current version of the application as read by the updater.
-  pub fn current_version(&self) -> &str {
+  pub fn current_version(&self) -> &Version {
     &self.update.current_version
   }
 
@@ -669,8 +761,8 @@ impl<R: Runtime> UpdateResponse<R> {
   }
 
   /// The update date.
-  pub fn date(&self) -> &str {
-    &self.update.date
+  pub fn date(&self) -> Option<&OffsetDateTime> {
+    self.update.date.as_ref()
   }
 
   /// The update description.
@@ -696,7 +788,7 @@ pub(crate) async fn check_update_with_dialog<R: Runtime>(handle: AppHandle<R>) {
 
     let mut builder = self::core::builder(handle.clone())
       .urls(&endpoints[..])
-      .current_version(&package_info.version);
+      .current_version(package_info.version);
     if let Some(target) = &handle.updater_settings.target {
       builder = builder.target(target);
     }
@@ -787,7 +879,7 @@ pub fn builder<R: Runtime>(handle: AppHandle<R>) -> UpdateBuilder<R> {
 
   let mut builder = self::core::builder(handle.clone())
     .urls(&endpoints[..])
-    .current_version(&package_info.version);
+    .current_version(package_info.version);
   if let Some(target) = &handle.updater_settings.target {
     builder = builder.target(target);
   }
