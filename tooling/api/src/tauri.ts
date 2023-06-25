@@ -1,4 +1,4 @@
-// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -55,14 +55,77 @@ function transformCallback(
   return identifier
 }
 
+class Channel<T = unknown> {
+  id: number
+  // @ts-expect-error field used by the IPC serializer
+  private readonly __TAURI_CHANNEL_MARKER__ = true
+  #onmessage: (response: T) => void = () => {
+    // no-op
+  }
+
+  constructor() {
+    this.id = transformCallback((response: T) => {
+      this.#onmessage(response)
+    })
+  }
+
+  set onmessage(handler: (response: T) => void) {
+    this.#onmessage = handler
+  }
+
+  get onmessage(): (response: T) => void {
+    return this.#onmessage
+  }
+
+  toJSON(): string {
+    return `__CHANNEL__:${this.id}`
+  }
+}
+
+class PluginListener {
+  plugin: string
+  event: string
+  channelId: number
+
+  constructor(plugin: string, event: string, channelId: number) {
+    this.plugin = plugin
+    this.event = event
+    this.channelId = channelId
+  }
+
+  async unregister(): Promise<void> {
+    return invoke(`plugin:${this.plugin}|remove_listener`, {
+      event: this.event,
+      channelId: this.channelId
+    })
+  }
+}
+
+/**
+ * Adds a listener to a plugin event.
+ *
+ * @returns The listener object to stop listening to the events.
+ *
+ * @since 2.0.0
+ */
+async function addPluginListener<T>(
+  plugin: string,
+  event: string,
+  cb: (payload: T) => void
+): Promise<PluginListener> {
+  const handler = new Channel<T>()
+  handler.onmessage = cb
+  return invoke(`plugin:${plugin}|register_listener`, { event, handler }).then(
+    () => new PluginListener(plugin, event, handler.id)
+  )
+}
+
 /**
  * Command arguments.
  *
  * @since 1.0.0
  */
-interface InvokeArgs {
-  [key: string]: unknown
-}
+type InvokeArgs = Record<string, unknown>
 
 /**
  * Sends a message to the backend.
@@ -137,4 +200,11 @@ function convertFileSrc(filePath: string, protocol = 'asset'): string {
 
 export type { InvokeArgs }
 
-export { transformCallback, invoke, convertFileSrc }
+export {
+  transformCallback,
+  Channel,
+  PluginListener,
+  addPluginListener,
+  invoke,
+  convertFileSrc
+}

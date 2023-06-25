@@ -1,12 +1,8 @@
 {
-  "$schema": "../../core/config-schema/schema.json",
+  "$schema": "../../core/tauri-config-schema/schema.json",
   "build": {
-    "distDir": [
-      "index.html"
-    ],
-    "devPath": [
-      "index.html"
-    ],
+    "distDir": ["index.html"],
+    "devPath": ["index.html"],
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
     "withGlobalTauri": true
@@ -41,9 +37,6 @@
         "exceptionDomain": ""
       }
     },
-    "allowlist": {
-      "all": false
-    },
     "windows": [
       {
         "title": "Welcome to Tauri!",
@@ -55,9 +48,6 @@
     ],
     "security": {
       "csp": "default-src 'self'"
-    },
-    "updater": {
-      "active": false
     }
   }
 }

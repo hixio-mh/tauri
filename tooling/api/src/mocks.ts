@@ -1,3 +1,22 @@
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
+
+/** @ignore */
+declare global {
+  interface Window {
+    __TAURI_METADATA__: {
+      __windows: WindowDef[]
+      __currentWindow: WindowDef
+    }
+  }
+}
+
+/** @ignore */
+interface WindowDef {
+  label: string
+}
+
 interface IPCMessage {
   cmd: string
   callback: number
@@ -106,21 +125,13 @@ export function mockIPC(
  * mockWindows("main", "second", "third");
  *
  * mockIPC((cmd, args) => {
- *  if (cmd === "tauri") {
- *    if (
- *      args?.__tauriModule === "Window" &&
- *      args?.message?.cmd === "manage" &&
- *      args?.message?.data?.cmd?.type === "close"
- *    ) {
- *      console.log('closing window!');
- *    }
+ *  if (cmd === "plugin:event|emit") {
+ *    console.log('emit event', args?.event, args?.payload);
  *  }
  * });
  *
- * const { getCurrent } = await import("@tauri-apps/api/window");
- *
- * const win = getCurrent();
- * await win.close(); // this will cause the mocked IPC handler to log to the console.
+ * const { emit } = await import("@tauri-apps/api/event");
+ * await emit('loaded'); // this will cause the mocked IPC handler to log to the console.
  * ```
  *
  * @param current Label of window this JavaScript context is running in.
@@ -165,8 +176,8 @@ export function mockWindows(
  * @since 1.0.0
  */
 export function clearMocks(): void {
-  // @ts-expect-error
+  // @ts-expect-error "The operand of a 'delete' operator must be optional' does not matter in this case
   delete window.__TAURI_IPC__
-  // @ts-expect-error
+  // @ts-expect-error "The operand of a 'delete' operator must be optional' does not matter in this case
   delete window.__TAURI_METADATA__
 }

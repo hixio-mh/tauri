@@ -1,4 +1,4 @@
-// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -10,9 +10,73 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 pub use serialize_to_javascript::Options as SerializeOptions;
 use serialize_to_javascript::Serialized;
+use tauri_macros::default_runtime;
+
+use crate::{
+  command::{CommandArg, CommandItem},
+  InvokeError, Runtime, Window,
+};
+
+const CHANNEL_PREFIX: &str = "__CHANNEL__:";
+
+/// An IPC channel.
+#[default_runtime(crate::Wry, wry)]
+pub struct Channel<R: Runtime> {
+  id: CallbackFn,
+  window: Window<R>,
+}
+
+impl<R: Runtime> Clone for Channel<R> {
+  fn clone(&self) -> Self {
+    Self {
+      id: self.id,
+      window: self.window.clone(),
+    }
+  }
+}
+
+impl Serialize for Channel {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    serializer.serialize_str(&format!("{CHANNEL_PREFIX}{}", self.id.0))
+  }
+}
+
+impl<R: Runtime> Channel<R> {
+  /// Sends the given data through the channel.
+  pub fn send<S: Serialize>(&self, data: &S) -> crate::Result<()> {
+    let js = format_callback(self.id, data)?;
+    self.window.eval(&js)
+  }
+}
+
+impl<'de, R: Runtime> CommandArg<'de, R> for Channel<R> {
+  /// Grabs the [`Window`] from the [`CommandItem`] and returns the associated [`Channel`].
+  fn from_command(command: CommandItem<'de, R>) -> Result<Self, InvokeError> {
+    let name = command.name;
+    let arg = command.key;
+    let window = command.message.window();
+    let value: String =
+      Deserialize::deserialize(command).map_err(|e| crate::Error::InvalidArgs(name, arg, e))?;
+    if let Some(callback_id) = value
+      .split_once(CHANNEL_PREFIX)
+      .and_then(|(_prefix, id)| id.parse().ok())
+    {
+      return Ok(Channel {
+        id: CallbackFn(callback_id),
+        window,
+      });
+    }
+    Err(InvokeError::from_anyhow(anyhow::anyhow!(
+      "invalid channel value `{value}`, expected a string in the `{CHANNEL_PREFIX}ID` format"
+    )))
+  }
+}
 
 /// The `Callback` type is the return value of the `transformCallback` JavaScript function.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct CallbackFn(pub usize);
 
 /// The information about this is quite limited. On Chrome/Edge and Firefox, [the maximum string size is approximately 1 GB](https://stackoverflow.com/a/34958490).
@@ -57,7 +121,7 @@ const MIN_JSON_PARSE_LEN: usize = 10_240;
 ///   bar: String,
 /// }
 /// let foo = Foo { bar: "x".repeat(20_000).into() };
-/// let value = serialize_js_with(&foo, SerializeOptions::default(), |v| format!("console.log({})", v)).unwrap();
+/// let value = serialize_js_with(&foo, SerializeOptions::default(), |v| format!("console.log({v})")).unwrap();
 /// assert_eq!(value, format!("console.log(JSON.parse('{{\"bar\":\"{}\"}}'))", foo.bar));
 /// ```
 pub fn serialize_js_with<T: Serialize, F: FnOnce(&str) -> String>(
@@ -179,8 +243,7 @@ pub fn format_callback<T: Serialize>(
     }} else {{
       console.warn("[TAURI] Couldn't find callback id {fn} in window. This happens when the app is reloaded while Rust is running an asynchronous operation.")
     }}"#,
-      fn = function_name.0,
-      arg = arg
+      fn = function_name.0
     )
   })
 }
@@ -242,22 +305,22 @@ mod test {
     }
 
     let raw_str = "T".repeat(MIN_JSON_PARSE_LEN);
-    assert_eq!(serialize_js(&raw_str).unwrap(), format!("\"{}\"", raw_str));
+    assert_eq!(serialize_js(&raw_str).unwrap(), format!("\"{raw_str}\""));
 
     assert_eq!(
       serialize_js(&JsonObj {
         value: raw_str.clone()
       })
       .unwrap(),
-      format!("JSON.parse('{{\"value\":\"{}\"}}')", raw_str)
+      format!("JSON.parse('{{\"value\":\"{raw_str}\"}}')")
     );
 
     assert_eq!(
       serialize_js(&JsonObj {
-        value: format!("\"{}\"", raw_str)
+        value: format!("\"{raw_str}\"")
       })
       .unwrap(),
-      format!("JSON.parse('{{\"value\":\"\\\\\"{}\\\\\"\"}}')", raw_str)
+      format!("JSON.parse('{{\"value\":\"\\\\\"{raw_str}\\\\\"\"}}')")
     );
 
     let dangerous_json = RawValue::from_string(
@@ -281,7 +344,7 @@ mod test {
 
   // check arbitrary strings in the format callback function
   #[quickcheck]
-  fn qc_formating(f: CallbackFn, a: String) -> bool {
+  fn qc_formatting(f: CallbackFn, a: String) -> bool {
     // call format callback
     let fc = format_callback(f, &a).unwrap();
     fc.contains(&format!(

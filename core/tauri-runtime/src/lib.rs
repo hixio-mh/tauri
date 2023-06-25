@@ -1,15 +1,22 @@
-// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+//! [![](https://github.com/tauri-apps/tauri/raw/dev/.github/splash.png)](https://tauri.app)
+//!
 //! Internal runtime between Tauri and the underlying webview runtime.
 
+#![doc(
+  html_logo_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png",
+  html_favicon_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png"
+)]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 
 use raw_window_handle::RawDisplayHandle;
 use serde::Deserialize;
 use std::{fmt::Debug, sync::mpsc::Sender};
 use tauri_utils::Theme;
+use url::Url;
 use uuid::Uuid;
 
 pub mod http;
@@ -53,6 +60,7 @@ pub struct SystemTray {
   #[cfg(target_os = "macos")]
   pub title: Option<String>,
   pub on_event: Option<Box<TrayEventHandler>>,
+  pub tooltip: Option<String>,
 }
 
 #[cfg(all(desktop, feature = "system-tray"))]
@@ -86,6 +94,7 @@ impl Clone for SystemTray {
       menu_on_left_click: self.menu_on_left_click,
       #[cfg(target_os = "macos")]
       title: self.title.clone(),
+      tooltip: self.tooltip.clone(),
     }
   }
 }
@@ -104,6 +113,7 @@ impl Default for SystemTray {
       #[cfg(target_os = "macos")]
       title: None,
       on_event: None,
+      tooltip: None,
     }
   }
 }
@@ -156,6 +166,17 @@ impl SystemTray {
     self
   }
 
+  /// Sets the tray icon tooltip.
+  ///
+  /// ## Platform-specific:
+  ///
+  /// - **Linux:** Unsupported
+  #[must_use]
+  pub fn with_tooltip(mut self, tooltip: &str) -> Self {
+    self.tooltip = Some(tooltip.to_owned());
+    self
+  }
+
   /// Sets the menu to show when the system tray is right clicked.
   #[must_use]
   pub fn with_menu(mut self, menu: menu::SystemTrayMenu) -> Self {
@@ -182,6 +203,23 @@ pub enum UserAttentionType {
   /// - **macOS:** Bounces the dock icon once.
   /// - **Windows:** Flashes the taskbar button until the application is in focus.
   Informational,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(tag = "type")]
+pub enum DeviceEventFilter {
+  /// Always filter out device events.
+  Always,
+  /// Filter out device events while the window is not focused.
+  Unfocused,
+  /// Report all device events regardless of window focus.
+  Never,
+}
+
+impl Default for DeviceEventFilter {
+  fn default() -> Self {
+    Self::Unfocused
+  }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -216,10 +254,6 @@ pub enum Error {
   /// Failed to get monitor on window operation.
   #[error("failed to get monitor")]
   FailedToGetMonitor,
-  /// Global shortcut error.
-  #[cfg(all(desktop, feature = "global-shortcut"))]
-  #[error(transparent)]
-  GlobalShortcut(Box<dyn std::error::Error + Send + Sync>),
   #[error("Invalid header name: {0}")]
   InvalidHeaderName(#[from] InvalidHeaderName),
   #[error("Invalid header value: {0}")]
@@ -362,31 +396,25 @@ pub trait RuntimeHandle<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'st
   #[cfg(target_os = "macos")]
   #[cfg_attr(doc_cfg, doc(cfg(target_os = "macos")))]
   fn hide(&self) -> Result<()>;
-}
 
-/// A global shortcut manager.
-#[cfg(all(desktop, feature = "global-shortcut"))]
-pub trait GlobalShortcutManager: Debug + Clone + Send + Sync {
-  /// Whether the application has registered the given `accelerator`.
-  fn is_registered(&self, accelerator: &str) -> Result<bool>;
+  /// Finds an Android class in the project scope.
+  #[cfg(target_os = "android")]
+  fn find_class<'a>(
+    &'a self,
+    env: jni::JNIEnv<'a>,
+    activity: jni::objects::JObject<'a>,
+    name: impl Into<String>,
+  ) -> std::result::Result<jni::objects::JClass<'a>, jni::errors::Error>;
 
-  /// Register a global shortcut of `accelerator`.
-  fn register<F: Fn() + Send + 'static>(&mut self, accelerator: &str, handler: F) -> Result<()>;
-
-  /// Unregister all accelerators registered by the manager instance.
-  fn unregister_all(&mut self) -> Result<()>;
-
-  /// Unregister the provided `accelerator`.
-  fn unregister(&mut self, accelerator: &str) -> Result<()>;
-}
-
-/// Clipboard manager.
-#[cfg(feature = "clipboard")]
-pub trait ClipboardManager: Debug + Clone + Send + Sync {
-  /// Writes the text into the clipboard as plain text.
-  fn write_text<T: Into<String>>(&mut self, text: T) -> Result<()>;
-  /// Read the content in the clipboard as plain text.
-  fn read_text(&self) -> Result<Option<String>>;
+  /// Dispatch a closure to run on the Android context.
+  ///
+  /// The closure takes the JNI env, the Android activity instance and the possibly null webview.
+  #[cfg(target_os = "android")]
+  fn run_on_android_context<F>(&self, f: F)
+  where
+    F: FnOnce(jni::JNIEnv<'_>, jni::objects::JObject<'_>, jni::objects::JObject<'_>)
+      + Send
+      + 'static;
 }
 
 pub trait EventLoopProxy<T: UserEvent>: Debug + Clone + Send + Sync {
@@ -399,12 +427,6 @@ pub trait Runtime<T: UserEvent>: Debug + Sized + 'static {
   type Dispatcher: Dispatch<T, Runtime = Self>;
   /// The runtime handle type.
   type Handle: RuntimeHandle<T, Runtime = Self>;
-  /// The global shortcut manager type.
-  #[cfg(all(desktop, feature = "global-shortcut"))]
-  type GlobalShortcutManager: GlobalShortcutManager;
-  /// The clipboard manager type.
-  #[cfg(feature = "clipboard")]
-  type ClipboardManager: ClipboardManager;
   /// The tray handler type.
   #[cfg(all(desktop, feature = "system-tray"))]
   type TrayHandler: menu::TrayHandle;
@@ -424,14 +446,6 @@ pub trait Runtime<T: UserEvent>: Debug + Sized + 'static {
 
   /// Gets a runtime handle.
   fn handle(&self) -> Self::Handle;
-
-  /// Gets the global shortcut manager.
-  #[cfg(all(desktop, feature = "global-shortcut"))]
-  fn global_shortcut_manager(&self) -> Self::GlobalShortcutManager;
-
-  /// Gets the clipboard manager.
-  #[cfg(feature = "clipboard")]
-  fn clipboard_manager(&self) -> Self::ClipboardManager;
 
   /// Create a new webview window.
   fn create_window(&self, pending: PendingWindow<T, Self>) -> Result<DetachedWindow<T, Self>>;
@@ -461,6 +475,19 @@ pub trait Runtime<T: UserEvent>: Debug + Sized + 'static {
   #[cfg_attr(doc_cfg, doc(cfg(target_os = "macos")))]
   fn hide(&self);
 
+  /// Change the device event filter mode.
+  ///
+  /// Since the DeviceEvent capture can lead to high CPU usage for unfocused windows, [`tao`]
+  /// will ignore them by default for unfocused windows on Windows. This method allows changing
+  /// the filter to explicitly capture them again.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - ** Linux / macOS / iOS / Android**: Unsupported.
+  ///
+  /// [`tao`]: https://crates.io/crates/tao
+  fn set_device_event_filter(&mut self, filter: DeviceEventFilter);
+
   /// Runs the one step of the webview runtime event loop and returns control flow to the caller.
   #[cfg(desktop)]
   fn run_iteration<F: Fn(RunEvent<T>) + 'static>(&mut self, callback: F) -> RunIteration;
@@ -486,6 +513,9 @@ pub trait Dispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'static 
   /// Registers a window event handler.
   fn on_menu_event<F: Fn(&window::MenuEvent) + Send + 'static>(&self, f: F) -> Uuid;
 
+  /// Runs a closure with the platform webview object as argument.
+  fn with_webview<F: FnOnce(Box<dyn std::any::Any>) + Send + 'static>(&self, f: F) -> Result<()>;
+
   /// Open the web inspector which is usually called devtools.
   #[cfg(any(debug_assertions, feature = "devtools"))]
   fn open_devtools(&self);
@@ -499,6 +529,9 @@ pub trait Dispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'static 
   fn is_devtools_open(&self) -> Result<bool>;
 
   // GETTERS
+
+  /// Returns the webview's current URL.
+  fn url(&self) -> Result<Url>;
 
   /// Returns the scale factor that can be used to map logical pixels to physical pixels, and vice versa.
   fn scale_factor(&self) -> Result<f64>;
@@ -522,8 +555,14 @@ pub trait Dispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'static 
   /// Gets the window's current fullscreen state.
   fn is_fullscreen(&self) -> Result<bool>;
 
+  /// Gets the window's current minimized state.
+  fn is_minimized(&self) -> Result<bool>;
+
   /// Gets the window's current maximized state.
   fn is_maximized(&self) -> Result<bool>;
+
+  /// Gets the window's current focus state.
+  fn is_focused(&self) -> Result<bool>;
 
   /// Gets the window’s current decoration state.
   fn is_decorated(&self) -> Result<bool>;
@@ -531,8 +570,31 @@ pub trait Dispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'static 
   /// Gets the window’s current resizable state.
   fn is_resizable(&self) -> Result<bool>;
 
+  /// Gets the window's native maximize button state.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - **Linux / iOS / Android:** Unsupported.
+  fn is_maximizable(&self) -> Result<bool>;
+
+  /// Gets the window's native minize button state.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - **Linux / iOS / Android:** Unsupported.
+  fn is_minimizable(&self) -> Result<bool>;
+
+  /// Gets the window's native close button state.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - **iOS / Android:** Unsupported.
+  fn is_closable(&self) -> Result<bool>;
+
   /// Gets the window's current visibility state.
   fn is_visible(&self) -> Result<bool>;
+  /// Gets the window's current title.
+  fn title(&self) -> Result<String>;
 
   /// Gets the window menu current visibility state.
   fn is_menu_visible(&self) -> Result<bool>;
@@ -587,8 +649,35 @@ pub trait Dispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'static 
   /// Updates the window resizable flag.
   fn set_resizable(&self, resizable: bool) -> Result<()>;
 
+  /// Updates the window's native maximize button state.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - **macOS:** Disables the "zoom" button in the window titlebar, which is also used to enter fullscreen mode.
+  /// - **Linux / iOS / Android:** Unsupported.
+  fn set_maximizable(&self, maximizable: bool) -> Result<()>;
+
+  /// Updates the window's native minimize button state.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - **Linux / iOS / Android:** Unsupported.
+  fn set_minimizable(&self, minimizable: bool) -> Result<()>;
+
+  /// Updates the window's native close button state.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - **Linux:** "GTK+ will do its best to convince the window manager not to show a close button.
+  ///   Depending on the system, this function may not have any effect when called on a window that is already visible"
+  /// - **iOS / Android:** Unsupported.
+  fn set_closable(&self, closable: bool) -> Result<()>;
+
   /// Updates the window title.
   fn set_title<S: Into<String>>(&self, title: S) -> Result<()>;
+
+  /// Naviagte to the given URL.
+  fn navigate(&self, url: Url) -> Result<()>;
 
   /// Maximizes the window.
   fn maximize(&self) -> Result<()>;
@@ -617,11 +706,17 @@ pub trait Dispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'static 
   /// Closes the window.
   fn close(&self) -> Result<()>;
 
-  /// Updates the hasDecorations flag.
+  /// Updates the decorations flag.
   fn set_decorations(&self, decorations: bool) -> Result<()>;
+
+  /// Updates the shadow flag.
+  fn set_shadow(&self, enable: bool) -> Result<()>;
 
   /// Updates the window alwaysOnTop flag.
   fn set_always_on_top(&self, always_on_top: bool) -> Result<()>;
+
+  /// Prevents the window contents from being captured by other apps.
+  fn set_content_protected(&self, protected: bool) -> Result<()>;
 
   /// Resizes the window.
   fn set_size(&self, size: Size) -> Result<()>;
@@ -644,7 +739,7 @@ pub trait Dispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 'static 
   /// Updates the window icon.
   fn set_icon(&self, icon: Icon) -> Result<()>;
 
-  /// Whether to show the window icon in the task bar or not.
+  /// Whether to hide the window icon from the taskbar or not.
   fn set_skip_taskbar(&self, skip: bool) -> Result<()>;
 
   /// Grabs the cursor, preventing it from leaving the window.

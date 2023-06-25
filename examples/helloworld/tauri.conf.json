@@ -1,12 +1,8 @@
 {
-  "$schema": "../../core/config-schema/schema.json",
+  "$schema": "../../core/tauri-config-schema/schema.json",
   "build": {
-    "distDir": [
-      "index.html"
-    ],
-    "devPath": [
-      "index.html"
-    ],
+    "distDir": ["index.html"],
+    "devPath": ["index.html"],
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },
@@ -39,9 +35,6 @@
         "frameworks": [],
         "exceptionDomain": ""
       }
-    },
-    "allowlist": {
-      "all": false
     },
     "windows": [
       {

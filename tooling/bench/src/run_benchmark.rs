@@ -1,6 +1,17 @@
-// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
+
+//! [![](https://github.com/tauri-apps/tauri/raw/dev/.github/splash.png)](https://tauri.app)
+//!
+//! This Rust binary runs on CI and provides internal metrics results of Tauri. To learn more see [benchmark_results](https://github.com/tauri-apps/benchmark_results) repository.
+//!
+//! ***_Internal use only_**
+
+#![doc(
+  html_logo_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png",
+  html_favicon_url = "https://github.com/tauri-apps/tauri/raw/dev/app-icon.png"
+)]
 
 use anyhow::Result;
 use std::{
@@ -49,7 +60,7 @@ fn run_strace_benchmarks(new_data: &mut utils::BenchResult) -> Result<()> {
     let mut file = tempfile::NamedTempFile::new()?;
 
     Command::new("strace")
-      .args(&[
+      .args([
         "-c",
         "-f",
         "-o",
@@ -64,7 +75,10 @@ fn run_strace_benchmarks(new_data: &mut utils::BenchResult) -> Result<()> {
     file.as_file_mut().read_to_string(&mut output)?;
 
     let strace_result = utils::parse_strace_output(&output);
-    let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
+    // Note, we always have 1 thread. Use cloneX calls as counter for additional threads created.
+    let clone = 1
+      + strace_result.get("clone").map(|d| d.calls).unwrap_or(0)
+      + strace_result.get("clone3").map(|d| d.calls).unwrap_or(0);
     let total = strace_result.get("total").unwrap().calls;
     thread_count.insert(name.to_string(), clone);
     syscall_count.insert(name.to_string(), total);
@@ -84,7 +98,7 @@ fn run_max_mem_benchmark() -> Result<HashMap<String, u64>> {
     let benchmark_file = benchmark_file.to_str().unwrap();
 
     let proc = Command::new("mprof")
-      .args(&[
+      .args([
         "run",
         "-C",
         "-o",
@@ -99,7 +113,7 @@ fn run_max_mem_benchmark() -> Result<HashMap<String, u64>> {
     println!("{:?}", proc_result);
     results.insert(
       name.to_string(),
-      utils::parse_max_mem(&benchmark_file).unwrap(),
+      utils::parse_max_mem(benchmark_file).unwrap(),
     );
   }
 
@@ -132,7 +146,7 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
 fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   let mut sizes = HashMap::<String, u64>::new();
 
-  let wry_size = rlib_size(&target_dir, "libwry");
+  let wry_size = rlib_size(target_dir, "libwry");
   println!("wry {} bytes", wry_size);
   sizes.insert("wry_rlib".to_string(), wry_size);
 
@@ -174,9 +188,9 @@ fn cargo_deps() -> HashMap<String, usize> {
       let mut cmd = Command::new("cargo");
       cmd.arg("tree");
       cmd.arg("--no-dedupe");
-      cmd.args(&["--edges", "normal"]);
-      cmd.args(&["--prefix", "none"]);
-      cmd.args(&["--target", target]);
+      cmd.args(["--edges", "normal"]);
+      cmd.args(["--prefix", "none"]);
+      cmd.args(["--target", target]);
       cmd.current_dir(&utils::tauri_root_path());
 
       let full_deps = cmd.output().expect("failed to run cargo tree").stdout;
@@ -268,7 +282,7 @@ fn main() -> Result<()> {
     time::format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]Z").unwrap();
   let now = time::OffsetDateTime::now_utc();
   let mut new_data = utils::BenchResult {
-    created_at: format!("{}", now.format(&format).unwrap()),
+    created_at: now.format(&format).unwrap(),
     sha1: utils::run_collect(&["git", "rev-parse", "HEAD"])
       .0
       .trim()

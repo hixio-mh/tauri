@@ -1,4 +1,4 @@
-// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -133,10 +133,10 @@ pub fn target_triple() -> crate::Result<String> {
       return Err(crate::Error::Environment);
     };
 
-    format!("{}-{}", os, env)
+    format!("{os}-{env}")
   };
 
-  Ok(format!("{}-{}", arch, os))
+  Ok(format!("{arch}-{os}"))
 }
 
 /// Computes the resource directory of the current environment.
@@ -157,8 +157,8 @@ pub fn resource_dir(package_info: &PackageInfo, env: &Env) -> crate::Result<Path
   let exe_dir = exe.parent().expect("failed to get exe directory");
   let curr_dir = exe_dir.display().to_string();
 
-  if curr_dir.ends_with(format!("{S}target{S}debug", S = MAIN_SEPARATOR).as_str())
-    || curr_dir.ends_with(format!("{S}target{S}release", S = MAIN_SEPARATOR).as_str())
+  if curr_dir.ends_with(format!("{MAIN_SEPARATOR}target{MAIN_SEPARATOR}debug").as_str())
+    || curr_dir.ends_with(format!("{MAIN_SEPARATOR}target{MAIN_SEPARATOR}release").as_str())
     || cfg!(target_os = "windows")
   {
     // running from the out dir or windows
@@ -204,7 +204,7 @@ pub fn resource_dir(package_info: &PackageInfo, env: &Env) -> crate::Result<Path
 }
 
 #[cfg(windows)]
-pub use windows_platform::{is_windows_7, windows_version};
+pub use windows_platform::{get_function_impl, is_windows_7, windows_version};
 
 #[cfg(windows)]
 mod windows_platform {
@@ -235,9 +235,9 @@ mod windows_platform {
     string.as_ref().encode_wide().chain(once(0)).collect()
   }
 
-  // Helper function to dynamically load function pointer.
-  // `library` and `function` must be zero-terminated.
-  fn get_function_impl(library: &str, function: &str) -> Option<FARPROC> {
+  /// Helper function to dynamically load function pointer.
+  /// `library` and `function` must be null-terminated.
+  pub fn get_function_impl(library: &str, function: &str) -> Option<FARPROC> {
     let library = encode_wide(library);
     assert_eq!(function.chars().last(), Some('\0'));
     let function = PCSTR::from_raw(function.as_ptr());

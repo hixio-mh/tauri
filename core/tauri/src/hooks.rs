@@ -1,4 +1,4 @@
-// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -19,7 +19,7 @@ pub type SetupHook<R> =
   Box<dyn FnOnce(&mut App<R>) -> Result<(), Box<dyn std::error::Error>> + Send>;
 
 /// A closure that is run every time Tauri receives a message it doesn't explicitly handle.
-pub type InvokeHandler<R> = dyn Fn(Invoke<R>) + Send + Sync + 'static;
+pub type InvokeHandler<R> = dyn Fn(Invoke<R>) -> bool + Send + Sync + 'static;
 
 /// A closure that is responsible for respond a JS message.
 pub type InvokeResponder<R> =
@@ -39,7 +39,6 @@ pub(crate) struct IpcJavascript<'a> {
 #[derive(Template)]
 #[default_template("../scripts/isolation.js")]
 pub(crate) struct IsolationJavascript<'a> {
-  pub(crate) origin: String,
   pub(crate) isolation_src: &'a str,
   pub(crate) style: &'a str,
 }
@@ -62,9 +61,6 @@ impl PageLoadPayload {
 pub struct InvokePayload {
   /// The invoke command.
   pub cmd: String,
-  #[serde(rename = "__tauriModule")]
-  #[doc(hidden)]
-  pub tauri_module: Option<String>,
   /// The success callback.
   pub callback: CallbackFn,
   /// The error callback.
@@ -99,7 +95,7 @@ impl InvokeError {
   /// Create an [`InvokeError`] as a string of the [`anyhow::Error`] message.
   #[inline(always)]
   pub fn from_anyhow(error: anyhow::Error) -> Self {
-    Self(JsonValue::String(format!("{:#}", error)))
+    Self(JsonValue::String(format!("{error:#}")))
   }
 }
 
@@ -167,6 +163,16 @@ pub struct InvokeResolver<R: Runtime> {
   pub(crate) error: CallbackFn,
 }
 
+impl<R: Runtime> Clone for InvokeResolver<R> {
+  fn clone(&self) -> Self {
+    Self {
+      window: self.window.clone(),
+      callback: self.callback,
+      error: self.error,
+    }
+  }
+}
+
 impl<R: Runtime> InvokeResolver<R> {
   pub(crate) fn new(window: Window<R>, callback: CallbackFn, error: CallbackFn) -> Self {
     Self {
@@ -193,7 +199,11 @@ impl<R: Runtime> InvokeResolver<R> {
     F: Future<Output = Result<JsonValue, InvokeError>> + Send + 'static,
   {
     crate::async_runtime::spawn(async move {
-      Self::return_result(self.window, task.await.into(), self.callback, self.error)
+      let response = match task.await {
+        Ok(ok) => InvokeResponse::Ok(ok),
+        Err(err) => InvokeResponse::Err(err),
+      };
+      Self::return_result(self.window, response, self.callback, self.error)
     });
   }
 
@@ -287,6 +297,17 @@ pub struct InvokeMessage<R: Runtime> {
   pub(crate) command: String,
   /// The JSON argument passed on the invoke message.
   pub(crate) payload: JsonValue,
+}
+
+impl<R: Runtime> Clone for InvokeMessage<R> {
+  fn clone(&self) -> Self {
+    Self {
+      window: self.window.clone(),
+      state: self.state.clone(),
+      command: self.command.clone(),
+      payload: self.payload.clone(),
+    }
+  }
 }
 
 impl<R: Runtime> InvokeMessage<R> {

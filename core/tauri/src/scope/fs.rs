@@ -1,4 +1,4 @@
-// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -10,13 +10,8 @@ use std::{
 };
 
 pub use glob::Pattern;
-use tauri_utils::{
-  config::{Config, FsAllowlistScope},
-  Env, PackageInfo,
-};
+use tauri_utils::config::FsScope;
 use uuid::Uuid;
-
-use crate::api::path::parse as parse_path;
 
 /// Scope change event.
 #[derive(Debug, Clone)]
@@ -35,6 +30,7 @@ pub struct Scope {
   allowed_patterns: Arc<Mutex<HashSet<Pattern>>>,
   forbidden_patterns: Arc<Mutex<HashSet<Pattern>>>,
   event_listeners: Arc<Mutex<HashMap<Uuid, EventListener>>>,
+  match_options: glob::MatchOptions,
 }
 
 impl fmt::Debug for Scope {
@@ -84,15 +80,14 @@ fn push_pattern<P: AsRef<Path>, F: Fn(&str) -> Result<Pattern, glob::PatternErro
 
 impl Scope {
   /// Creates a new scope from a `FsAllowlistScope` configuration.
-  pub(crate) fn for_fs_api(
-    config: &Config,
-    package_info: &PackageInfo,
-    env: &Env,
-    scope: &FsAllowlistScope,
+  #[allow(unused)]
+  pub(crate) fn for_fs_api<R: crate::Runtime, M: crate::Manager<R>>(
+    manager: &M,
+    scope: &tauri_utils::config::FsScope,
   ) -> crate::Result<Self> {
     let mut allowed_patterns = HashSet::new();
     for path in scope.allowed_paths() {
-      if let Ok(path) = parse_path(config, package_info, env, path) {
+      if let Ok(path) = manager.path().parse(path) {
         push_pattern(&mut allowed_patterns, path, Pattern::new)?;
       }
     }
@@ -100,16 +95,35 @@ impl Scope {
     let mut forbidden_patterns = HashSet::new();
     if let Some(forbidden_paths) = scope.forbidden_paths() {
       for path in forbidden_paths {
-        if let Ok(path) = parse_path(config, package_info, env, path) {
+        if let Ok(path) = manager.path().parse(path) {
           push_pattern(&mut forbidden_patterns, path, Pattern::new)?;
         }
       }
     }
 
+    let require_literal_leading_dot = match scope {
+      FsScope::Scope {
+        require_literal_leading_dot: Some(require),
+        ..
+      } => *require,
+      // dotfiles are not supposed to be exposed by default on unix
+      #[cfg(unix)]
+      _ => true,
+      #[cfg(windows)]
+      _ => false,
+    };
+
     Ok(Self {
       allowed_patterns: Arc::new(Mutex::new(allowed_patterns)),
       forbidden_patterns: Arc::new(Mutex::new(forbidden_patterns)),
       event_listeners: Default::default(),
+      match_options: glob::MatchOptions {
+        // this is needed so `/dir/*` doesn't match files within subdirectories such as `/dir/subdir/file.txt`
+        // see: https://github.com/tauri-apps/tauri/security/advisories/GHSA-6mv3-wm7j-h4w5
+        require_literal_separator: true,
+        require_literal_leading_dot,
+        ..Default::default()
+      },
     })
   }
 
@@ -141,16 +155,16 @@ impl Scope {
   /// Extend the allowed patterns with the given directory.
   ///
   /// After this function has been called, the frontend will be able to use the Tauri API to read
-  /// the directory and all of its files and subdirectories.
+  /// the directory and all of its files. If `recursive` is `true`, subdirectories will be accessible too.
   pub fn allow_directory<P: AsRef<Path>>(&self, path: P, recursive: bool) -> crate::Result<()> {
     let path = path.as_ref();
     {
       let mut list = self.allowed_patterns.lock().unwrap();
 
       // allow the directory to be read
-      push_pattern(&mut list, &path, escaped_pattern)?;
+      push_pattern(&mut list, path, escaped_pattern)?;
       // allow its files and subdirectories to be read
-      push_pattern(&mut list, &path, |p| {
+      push_pattern(&mut list, path, |p| {
         escaped_pattern_with(p, if recursive { "**" } else { "*" })
       })?;
     }
@@ -165,7 +179,7 @@ impl Scope {
     let path = path.as_ref();
     push_pattern(
       &mut self.allowed_patterns.lock().unwrap(),
-      &path,
+      path,
       escaped_pattern,
     )?;
     self.trigger(Event::PathAllowed(path.to_path_buf()));
@@ -181,9 +195,9 @@ impl Scope {
       let mut list = self.forbidden_patterns.lock().unwrap();
 
       // allow the directory to be read
-      push_pattern(&mut list, &path, escaped_pattern)?;
+      push_pattern(&mut list, path, escaped_pattern)?;
       // allow its files and subdirectories to be read
-      push_pattern(&mut list, &path, |p| {
+      push_pattern(&mut list, path, |p| {
         escaped_pattern_with(p, if recursive { "**" } else { "*" })
       })?;
     }
@@ -198,7 +212,7 @@ impl Scope {
     let path = path.as_ref();
     push_pattern(
       &mut self.forbidden_patterns.lock().unwrap(),
-      &path,
+      path,
       escaped_pattern,
     )?;
     self.trigger(Event::PathForbidden(path.to_path_buf()));
@@ -216,13 +230,12 @@ impl Scope {
 
     if let Ok(path) = path {
       let path: PathBuf = path.components().collect();
-
       let forbidden = self
         .forbidden_patterns
         .lock()
         .unwrap()
         .iter()
-        .any(|p| p.matches_path(&path));
+        .any(|p| p.matches_path_with(&path, self.match_options));
 
       if forbidden {
         false
@@ -232,7 +245,7 @@ impl Scope {
           .lock()
           .unwrap()
           .iter()
-          .any(|p| p.matches_path(&path));
+          .any(|p| p.matches_path_with(&path, self.match_options));
         allowed
       }
     } else {
@@ -247,10 +260,9 @@ fn escaped_pattern(p: &str) -> Result<Pattern, glob::PatternError> {
 
 fn escaped_pattern_with(p: &str, append: &str) -> Result<Pattern, glob::PatternError> {
   Pattern::new(&format!(
-    "{}{}{}",
+    "{}{}{append}",
     glob::Pattern::escape(p),
-    MAIN_SEPARATOR,
-    append
+    MAIN_SEPARATOR
   ))
 }
 
@@ -263,38 +275,114 @@ mod tests {
       allowed_patterns: Default::default(),
       forbidden_patterns: Default::default(),
       event_listeners: Default::default(),
+      match_options: glob::MatchOptions {
+        // this is needed so `/dir/*` doesn't match files within subdirectories such as `/dir/subdir/file.txt`
+        // see: https://github.com/tauri-apps/tauri/security/advisories/GHSA-6mv3-wm7j-h4w5
+        require_literal_separator: true,
+        // dotfiles are not supposed to be exposed by default on unix
+        #[cfg(unix)]
+        require_literal_leading_dot: true,
+        #[cfg(windows)]
+        require_literal_leading_dot: false,
+        ..Default::default()
+      },
     }
   }
 
   #[test]
   fn path_is_escaped() {
     let scope = new_scope();
-    scope.allow_directory("/home/tauri/**", false).unwrap();
-    assert!(scope.is_allowed("/home/tauri/**"));
-    assert!(scope.is_allowed("/home/tauri/**/file"));
-    assert!(!scope.is_allowed("/home/tauri/anyfile"));
+    #[cfg(unix)]
+    {
+      scope.allow_directory("/home/tauri/**", false).unwrap();
+      assert!(scope.is_allowed("/home/tauri/**"));
+      assert!(scope.is_allowed("/home/tauri/**/file"));
+      assert!(!scope.is_allowed("/home/tauri/anyfile"));
+    }
+    #[cfg(windows)]
+    {
+      scope.allow_directory("C:\\home\\tauri\\**", false).unwrap();
+      assert!(scope.is_allowed("C:\\home\\tauri\\**"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\**\\file"));
+      assert!(!scope.is_allowed("C:\\home\\tauri\\anyfile"));
+    }
 
     let scope = new_scope();
-    scope.allow_file("/home/tauri/**").unwrap();
-    assert!(scope.is_allowed("/home/tauri/**"));
-    assert!(!scope.is_allowed("/home/tauri/**/file"));
-    assert!(!scope.is_allowed("/home/tauri/anyfile"));
+    #[cfg(unix)]
+    {
+      scope.allow_file("/home/tauri/**").unwrap();
+      assert!(scope.is_allowed("/home/tauri/**"));
+      assert!(!scope.is_allowed("/home/tauri/**/file"));
+      assert!(!scope.is_allowed("/home/tauri/anyfile"));
+    }
+    #[cfg(windows)]
+    {
+      scope.allow_file("C:\\home\\tauri\\**").unwrap();
+      assert!(scope.is_allowed("C:\\home\\tauri\\**"));
+      assert!(!scope.is_allowed("C:\\home\\tauri\\**\\file"));
+      assert!(!scope.is_allowed("C:\\home\\tauri\\anyfile"));
+    }
 
     let scope = new_scope();
-    scope.allow_directory("/home/tauri", true).unwrap();
-    scope.forbid_directory("/home/tauri/**", false).unwrap();
-    assert!(!scope.is_allowed("/home/tauri/**"));
-    assert!(!scope.is_allowed("/home/tauri/**/file"));
-    assert!(!scope.is_allowed("/home/tauri/**/inner/file"));
-    assert!(scope.is_allowed("/home/tauri/inner/folder/anyfile"));
-    assert!(scope.is_allowed("/home/tauri/anyfile"));
+    #[cfg(unix)]
+    {
+      scope.allow_directory("/home/tauri", true).unwrap();
+      scope.forbid_directory("/home/tauri/**", false).unwrap();
+      assert!(!scope.is_allowed("/home/tauri/**"));
+      assert!(!scope.is_allowed("/home/tauri/**/file"));
+      assert!(scope.is_allowed("/home/tauri/**/inner/file"));
+      assert!(scope.is_allowed("/home/tauri/inner/folder/anyfile"));
+      assert!(scope.is_allowed("/home/tauri/anyfile"));
+    }
+    #[cfg(windows)]
+    {
+      scope.allow_directory("C:\\home\\tauri", true).unwrap();
+      scope
+        .forbid_directory("C:\\home\\tauri\\**", false)
+        .unwrap();
+      assert!(!scope.is_allowed("C:\\home\\tauri\\**"));
+      assert!(!scope.is_allowed("C:\\home\\tauri\\**\\file"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\**\\inner\\file"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\inner\\folder\\anyfile"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\anyfile"));
+    }
 
     let scope = new_scope();
-    scope.allow_directory("/home/tauri", true).unwrap();
-    scope.forbid_file("/home/tauri/**").unwrap();
-    assert!(!scope.is_allowed("/home/tauri/**"));
-    assert!(scope.is_allowed("/home/tauri/**/file"));
-    assert!(scope.is_allowed("/home/tauri/**/inner/file"));
-    assert!(scope.is_allowed("/home/tauri/anyfile"));
+    #[cfg(unix)]
+    {
+      scope.allow_directory("/home/tauri", true).unwrap();
+      scope.forbid_file("/home/tauri/**").unwrap();
+      assert!(!scope.is_allowed("/home/tauri/**"));
+      assert!(scope.is_allowed("/home/tauri/**/file"));
+      assert!(scope.is_allowed("/home/tauri/**/inner/file"));
+      assert!(scope.is_allowed("/home/tauri/anyfile"));
+    }
+    #[cfg(windows)]
+    {
+      scope.allow_directory("C:\\home\\tauri", true).unwrap();
+      scope.forbid_file("C:\\home\\tauri\\**").unwrap();
+      assert!(!scope.is_allowed("C:\\home\\tauri\\**"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\**\\file"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\**\\inner\\file"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\anyfile"));
+    }
+
+    let scope = new_scope();
+    #[cfg(unix)]
+    {
+      scope.allow_directory("/home/tauri", false).unwrap();
+      assert!(scope.is_allowed("/home/tauri/**"));
+      assert!(!scope.is_allowed("/home/tauri/**/file"));
+      assert!(!scope.is_allowed("/home/tauri/**/inner/file"));
+      assert!(scope.is_allowed("/home/tauri/anyfile"));
+    }
+    #[cfg(windows)]
+    {
+      scope.allow_directory("C:\\home\\tauri", false).unwrap();
+      assert!(scope.is_allowed("C:\\home\\tauri\\**"));
+      assert!(!scope.is_allowed("C:\\home\\tauri\\**\\file"));
+      assert!(!scope.is_allowed("C:\\home\\tauri\\**\\inner\\file"));
+      assert!(scope.is_allowed("C:\\home\\tauri\\anyfile"));
+    }
   }
 }
