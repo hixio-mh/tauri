@@ -1,5 +1,52 @@
 # Changelog
 
+## \[2.0.0-alpha.14]
+
+### Breaking Changes
+
+- [`d5074af5`](https://www.github.com/tauri-apps/tauri/commit/d5074af562b2b5cb6c5711442097c4058af32db6)([#7801](https://www.github.com/tauri-apps/tauri/pull/7801)) The custom protocol on Android now uses the `http` scheme instead of `https`.
+
+## \[2.0.0-alpha.13]
+
+### Breaking Changes
+
+- [`4cb51a2d`](https://www.github.com/tauri-apps/tauri/commit/4cb51a2d56cfcae0749062c79ede5236bd8c02c2)([#7779](https://www.github.com/tauri-apps/tauri/pull/7779)) The custom protocol on Windows now uses the `http` scheme instead of `https`.
+- [`974e38b4`](https://www.github.com/tauri-apps/tauri/commit/974e38b4ddc198530aa977ec77d513b76013b9f3)([#7744](https://www.github.com/tauri-apps/tauri/pull/7744)) Renamed the `plugin add` command to `add`.
+
+## \[2.0.0-alpha.12]
+
+### Bug Fixes
+
+- [`b75a1210`](https://www.github.com/tauri-apps/tauri/commit/b75a1210bed589187678861d7314ae6279bf7c87)([#7762](https://www.github.com/tauri-apps/tauri/pull/7762)) Fixes a regression on alpha.11 where iOS logs aren't being displayed when using `ios dev` with a real device.
+- [`8faa5a4a`](https://www.github.com/tauri-apps/tauri/commit/8faa5a4a1238a44ca7b54d2084aaed553ac2a1ba)([#7765](https://www.github.com/tauri-apps/tauri/pull/7765)) Ensure asset directory exists on the iOS project.
+
+### Dependencies
+
+- Upgraded to `tauri-bundler@2.0.0-alpha.8`
+
+## \[2.0.0-alpha.11]
+
+### New Features
+
+- [`522de0e7`](https://www.github.com/tauri-apps/tauri/commit/522de0e78891d0bdf6387a5118985fc41a11baeb)([#7447](https://www.github.com/tauri-apps/tauri/pull/7447)) Expose an environment variable `TAURI_${PLUGIN_NAME}_PLUGIN_CONFIG` for each defined plugin configuration object.
+- [`c7dacca4`](https://www.github.com/tauri-apps/tauri/commit/c7dacca4661c6ddf937c1a3dd3ace896d5baf40c)([#7446](https://www.github.com/tauri-apps/tauri/pull/7446)) Expose the `TAURI_IOS_PROJECT_PATH` and `TAURI_IOS_APP_NAME` environment variables when using `ios` commands.
+- [`aa94f719`](https://www.github.com/tauri-apps/tauri/commit/aa94f7197e4345a7cab1617272b10895859674f9)([#7445](https://www.github.com/tauri-apps/tauri/pull/7445)) Generate empty entitlements file for the iOS project.
+- [`d010bc07`](https://www.github.com/tauri-apps/tauri/commit/d010bc07b81116bef769b64cdc19b23dff762d48)([#7554](https://www.github.com/tauri-apps/tauri/pull/7554)) Set the iOS project PRODUCT_NAME value to the string under `tauri.conf.json > package > productName` if it is set.
+- [`8af24974`](https://www.github.com/tauri-apps/tauri/commit/8af2497496f11ee481472dfdc3125757346c1a3e)([#7561](https://www.github.com/tauri-apps/tauri/pull/7561)) The `migrate` command now automatically reads all JavaScript files and updates `@tauri-apps/api` import paths and install the missing plugins.
+
+### Enhancements
+
+- [`fbeb5b91`](https://www.github.com/tauri-apps/tauri/commit/fbeb5b9185baeda19e865228179e3e44c165f1d9)([#7170](https://www.github.com/tauri-apps/tauri/pull/7170)) Update migrate command to update the configuration CSP to include `ipc:` on the `connect-src` directive, needed by the new IPC using custom protocols.
+
+### Bug Fixes
+
+- [`5eb85543`](https://www.github.com/tauri-apps/tauri/commit/5eb85543313eaf7ca2289898652b1b11dc776608)([#7282](https://www.github.com/tauri-apps/tauri/pull/7282)) Fix `tauri info` failing when there is no available iOS code signing certificate.
+
+### Dependencies
+
+- Upgraded to `tauri-utils@2.0.0-alpha.7`
+- Upgraded to `tauri-bundler@2.0.0-alpha.7`
+
 ## \[2.0.0-alpha.10]
 
 ### New Features

@@ -32,7 +32,7 @@ use crate::helpers::{
   app_paths::{app_dir, tauri_dir},
   config::{nsis_settings, reload as reload_config, wix_settings, Config},
 };
-use tauri_utils::display_path;
+use tauri_utils::{display_path, platform::Target};
 
 mod cargo_config;
 mod desktop;
@@ -90,7 +90,7 @@ pub struct MobileOptions {
 }
 
 #[derive(Debug)]
-pub struct Target {
+pub struct RustupTarget {
   name: String,
   installed: bool,
 }
@@ -99,7 +99,7 @@ pub struct Rust {
   app_settings: RustAppSettings,
   config_features: Vec<String>,
   product_name: Option<String>,
-  available_targets: Option<Vec<Target>>,
+  available_targets: Option<Vec<RustupTarget>>,
 }
 
 impl Interface for Rust {
@@ -197,7 +197,7 @@ impl Interface for Rust {
     }
   }
 
-  fn mobile_dev<R: Fn(MobileOptions) -> crate::Result<Box<dyn DevProcess>>>(
+  fn mobile_dev<R: Fn(MobileOptions) -> crate::Result<Box<dyn DevProcess + Send>>>(
     &mut self,
     mut options: MobileOptions,
     runner: R,
@@ -431,7 +431,7 @@ impl Rust {
     options: Options,
     run_args: Vec<String>,
     on_exit: F,
-  ) -> crate::Result<Box<dyn DevProcess>> {
+  ) -> crate::Result<Box<dyn DevProcess + Send>> {
     desktop::run_dev(
       options,
       run_args,
@@ -441,10 +441,10 @@ impl Rust {
       self.product_name.clone(),
       on_exit,
     )
-    .map(|c| Box::new(c) as Box<dyn DevProcess>)
+    .map(|c| Box::new(c) as Box<dyn DevProcess + Send>)
   }
 
-  fn run_dev_watcher<F: Fn(&mut Rust) -> crate::Result<Box<dyn DevProcess>>>(
+  fn run_dev_watcher<F: Fn(&mut Rust) -> crate::Result<Box<dyn DevProcess + Send>>>(
     &mut self,
     config: Option<String>,
     run: Arc<F>,
@@ -510,7 +510,7 @@ impl Rust {
           let event_path = event.path;
 
           if !ignore_matcher.is_ignore(&event_path, event_path.is_dir()) {
-            if is_configuration_file(&event_path) {
+            if is_configuration_file(self.app_settings.target, &event_path) {
               match reload_config(config.as_deref()) {
                 Ok(config) => {
                   info!("Tauri configuration changed. Rewriting manifest...");
@@ -685,6 +685,7 @@ pub struct RustAppSettings {
   package_settings: PackageSettings,
   cargo_config: CargoConfig,
   target_triple: String,
+  target: Target,
 }
 
 impl AppSettings for RustAppSettings {
@@ -697,12 +698,7 @@ impl AppSettings for RustAppSettings {
     config: &Config,
     features: &[String],
   ) -> crate::Result<BundleSettings> {
-    tauri_config_to_bundle_settings(
-      &self.manifest,
-      features,
-      config.tauri.bundle.clone(),
-      config.tauri.system_tray.clone(),
-    )
+    tauri_config_to_bundle_settings(&self.manifest, features, config.tauri.bundle.clone())
   }
 
   fn app_binary_path(&self, options: &Options) -> crate::Result<PathBuf> {
@@ -959,6 +955,7 @@ impl RustAppSettings {
             .to_string()
         })
     });
+    let target = Target::from_triple(&target_triple);
 
     Ok(Self {
       manifest,
@@ -967,6 +964,7 @@ impl RustAppSettings {
       package_settings,
       cargo_config,
       target_triple,
+      target,
     })
   }
 
@@ -1045,7 +1043,6 @@ fn tauri_config_to_bundle_settings(
   manifest: &Manifest,
   features: &[String],
   config: crate::helpers::config::BundleConfig,
-  system_tray_config: Option<crate::helpers::config::SystemTrayConfig>,
 ) -> crate::Result<BundleSettings> {
   let enabled_features = manifest.all_enabled_features(features);
 
@@ -1066,15 +1063,45 @@ fn tauri_config_to_bundle_settings(
   #[allow(unused_mut)]
   let mut depends = config.deb.depends.unwrap_or_default();
 
+  // set env vars used by the bundler and inject dependencies
   #[cfg(target_os = "linux")]
   {
-    if let Some(system_tray_config) = &system_tray_config {
-      let tray = std::env::var("TAURI_TRAY").unwrap_or_else(|_| "ayatana".to_string());
-      if tray == "ayatana" {
-        depends.push("libayatana-appindicator3-1".into());
-      } else {
-        depends.push("libappindicator3-1".into());
+    if enabled_features.contains(&"tray-icon".into())
+      || enabled_features.contains(&"tauri/tray-icon".into())
+    {
+      let (tray_kind, path) = std::env::var("TAURI_TRAY")
+        .map(|kind| {
+          if kind == "ayatana" {
+            (
+              pkgconfig_utils::TrayKind::Ayatana,
+              format!(
+                "{}/libayatana-appindicator3.so.1",
+                pkgconfig_utils::get_library_path("ayatana-appindicator3-0.1")
+                  .expect("failed to get ayatana-appindicator library path using pkg-config.")
+              ),
+            )
+          } else {
+            (
+              pkgconfig_utils::TrayKind::Libappindicator,
+              format!(
+                "{}/libappindicator3.so.1",
+                pkgconfig_utils::get_library_path("appindicator3-0.1")
+                  .expect("failed to get libappindicator-gtk library path using pkg-config.")
+              ),
+            )
+          }
+        })
+        .unwrap_or_else(|_| pkgconfig_utils::get_appindicator_library_path());
+      match tray_kind {
+        pkgconfig_utils::TrayKind::Ayatana => {
+          depends.push("libayatana-appindicator3-1".into());
+        }
+        pkgconfig_utils::TrayKind::Libappindicator => {
+          depends.push("libappindicator3-1".into());
+        }
       }
+
+      std::env::set_var("TRAY_LIBRARY_PATH", path);
     }
 
     // provides `libwebkit2gtk-4.1.so.37` and all `4.0` versions have the -37 package name
@@ -1183,4 +1210,49 @@ fn tauri_config_to_bundle_settings(
     }),
     ..Default::default()
   })
+}
+
+#[cfg(target_os = "linux")]
+mod pkgconfig_utils {
+  use std::process::Command;
+
+  pub enum TrayKind {
+    Ayatana,
+    Libappindicator,
+  }
+
+  pub fn get_appindicator_library_path() -> (TrayKind, String) {
+    match get_library_path("ayatana-appindicator3-0.1") {
+      Some(p) => (
+        TrayKind::Ayatana,
+        format!("{p}/libayatana-appindicator3.so.1"),
+      ),
+      None => match get_library_path("appindicator3-0.1") {
+        Some(p) => (
+          TrayKind::Libappindicator,
+          format!("{p}/libappindicator3.so.1"),
+        ),
+        None => panic!("Can't detect any appindicator library"),
+      },
+    }
+  }
+
+  /// Gets the folder in which a library is located using `pkg-config`.
+  pub fn get_library_path(name: &str) -> Option<String> {
+    let mut cmd = Command::new("pkg-config");
+    cmd.env("PKG_CONFIG_ALLOW_SYSTEM_LIBS", "1");
+    cmd.arg("--libs-only-L");
+    cmd.arg(name);
+    if let Ok(output) = cmd.output() {
+      if !output.stdout.is_empty() {
+        // output would be "-L/path/to/library\n"
+        let word = output.stdout[2..].to_vec();
+        return Some(String::from_utf8_lossy(&word).trim().to_string());
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  }
 }

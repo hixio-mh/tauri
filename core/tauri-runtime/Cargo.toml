@@ -1,6 +1,6 @@
 [package]
 name = "tauri-runtime"
-version = "0.13.0-alpha.6"
+version = "1.0.0-alpha.1"
 description = "Runtime for Tauri applications"
 exclude = [ "CHANGELOG.md", "/target" ]
 readme = "README.md"
@@ -26,12 +26,10 @@ targets = [
 serde = { version = "1.0", features = [ "derive" ] }
 serde_json = "1.0"
 thiserror = "1.0"
-tauri-utils = { version = "2.0.0-alpha.6", path = "../tauri-utils" }
+tauri-utils = { version = "2.0.0-alpha.7", path = "../tauri-utils" }
 uuid = { version = "1", features = [ "v4" ] }
 http = "0.2.4"
-http-range = "0.1.4"
 raw-window-handle = "0.5"
-rand = "0.8"
 url = { version = "2" }
 
 [target."cfg(windows)".dependencies.windows]
@@ -42,12 +40,11 @@ features = [ "Win32_Foundation" ]
 gtk = { version = "0.16", features = [ "v3_24" ] }
 
 [target."cfg(target_os = \"android\")".dependencies]
-jni = "0.20"
+jni = "0.21"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 url = "2"
 
 [features]
 devtools = [ ]
-system-tray = [ ]
 macos-private-api = [ ]

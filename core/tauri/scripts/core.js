@@ -13,6 +13,15 @@
     })
   }
 
+  const osName = __TEMPLATE_os_name__
+
+  window.__TAURI__.convertFileSrc = function convertFileSrc(filePath, protocol = 'asset') {
+    const path = encodeURIComponent(filePath)
+    return osName === 'windows' || osName === 'android'
+      ? `http://${protocol}.localhost/${path}`
+      : `${protocol}://localhost/${path}`
+  }
+
   window.__TAURI__.transformCallback = function transformCallback(
     callback,
     once
@@ -48,30 +57,24 @@
     }
   }
 
-  window.__TAURI_INVOKE__ = function invoke(cmd, args = {}) {
+  window.__TAURI_INVOKE__ = function invoke(cmd, payload = {}, options) {
     return new Promise(function (resolve, reject) {
-      var callback = window.__TAURI__.transformCallback(function (r) {
+      const callback = window.__TAURI__.transformCallback(function (r) {
         resolve(r)
         delete window[`_${error}`]
       }, true)
-      var error = window.__TAURI__.transformCallback(function (e) {
+      const error = window.__TAURI__.transformCallback(function (e) {
         reject(e)
         delete window[`_${callback}`]
       }, true)
 
-      if (typeof cmd === 'string') {
-        args.cmd = cmd
-      } else if (typeof cmd === 'object') {
-        args = cmd
-      } else {
-        return reject(new Error('Invalid argument type.'))
-      }
-
       const action = () => {
         window.__TAURI_IPC__({
-          ...args,
+          cmd,
           callback,
-          error: error
+          error,
+          payload,
+          options
         })
       }
       if (window.__TAURI_IPC__) {

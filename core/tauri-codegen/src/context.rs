@@ -15,6 +15,7 @@ use tauri_utils::config::{AppUrl, Config, PatternKind, WindowUrl};
 use tauri_utils::html::{
   inject_nonce_token, parse as parse_html, serialize_node as serialize_html_node,
 };
+use tauri_utils::platform::Target;
 
 use crate::embedded_assets::{AssetOptions, CspHashes, EmbeddedAssets, EmbeddedAssetsError};
 
@@ -112,26 +113,6 @@ fn map_isolation(
   }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum Target {
-  Linux,
-  Windows,
-  Darwin,
-  Android,
-  // iOS.
-  Ios,
-}
-
-impl Target {
-  fn is_mobile(&self) -> bool {
-    matches!(self, Target::Android | Target::Ios)
-  }
-
-  fn is_desktop(&self) -> bool {
-    !self.is_mobile()
-  }
-}
-
 /// Build a `tauri::Context` for including in application code.
 pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsError> {
   let ContextData {
@@ -141,34 +122,11 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
     root,
   } = data;
 
-  let target =
-    if let Ok(target) = std::env::var("TARGET").or_else(|_| std::env::var("TAURI_TARGET_TRIPLE")) {
-      if target.contains("unknown-linux") {
-        Target::Linux
-      } else if target.contains("pc-windows") {
-        Target::Windows
-      } else if target.contains("apple-darwin") {
-        Target::Darwin
-      } else if target.contains("android") {
-        Target::Android
-      } else if target.contains("apple-ios") {
-        Target::Ios
-      } else {
-        panic!("unknown codegen target {target}");
-      }
-    } else if cfg!(target_os = "linux") {
-      Target::Linux
-    } else if cfg!(windows) {
-      Target::Windows
-    } else if cfg!(target_os = "macos") {
-      Target::Darwin
-    } else if cfg!(target_os = "android") {
-      Target::Android
-    } else if cfg!(target_os = "ios") {
-      Target::Ios
-    } else {
-      panic!("unknown codegen target")
-    };
+  let target = std::env::var("TARGET")
+    .or_else(|_| std::env::var("TAURI_TARGET_TRIPLE"))
+    .as_deref()
+    .map(Target::from_triple)
+    .unwrap_or_else(|_| Target::current());
 
   let mut options = AssetOptions::new(config.tauri.pattern.clone())
     .freeze_prototype(config.tauri.security.freeze_prototype)
@@ -264,8 +222,8 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
         );
         png_icon(&root, &out_dir, icon_path).map(|i| quote!(::std::option::Option::Some(#i)))?
       }
-    } else if target == Target::Linux {
-      // handle default window icons for Linux targets
+    } else {
+      // handle default window icons for Unix targets
       let icon_path = find_icon(
         &config,
         &config_parent,
@@ -273,8 +231,6 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
         "icons/icon.png",
       );
       png_icon(&root, &out_dir, icon_path).map(|i| quote!(::std::option::Option::Some(#i)))?
-    } else {
-      quote!(::std::option::Option::None)
     }
   };
 
@@ -319,16 +275,16 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
     }
   );
 
-  let with_system_tray_icon_code = if target.is_desktop() {
-    if let Some(tray) = &config.tauri.system_tray {
-      let system_tray_icon_path = config_parent.join(&tray.icon_path);
-      let ext = system_tray_icon_path.extension();
+  let with_tray_icon_code = if target.is_desktop() {
+    if let Some(tray) = &config.tauri.tray_icon {
+      let tray_icon_icon_path = config_parent.join(&tray.icon_path);
+      let ext = tray_icon_icon_path.extension();
       if ext.map_or(false, |e| e == "ico") {
-        ico_icon(&root, &out_dir, system_tray_icon_path)
-          .map(|i| quote!(context.set_system_tray_icon(#i);))?
+        ico_icon(&root, &out_dir, tray_icon_icon_path)
+          .map(|i| quote!(context.set_tray_icon(#i);))?
       } else if ext.map_or(false, |e| e == "png") {
-        png_icon(&root, &out_dir, system_tray_icon_path)
-          .map(|i| quote!(context.set_system_tray_icon(#i);))?
+        png_icon(&root, &out_dir, tray_icon_icon_path)
+          .map(|i| quote!(context.set_tray_icon(#i);))?
       } else {
         quote!(compile_error!(
           "The tray icon extension must be either `.ico` or `.png`."
@@ -432,7 +388,7 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
       #info_plist,
       #pattern,
     );
-    #with_system_tray_icon_code
+    #with_tray_icon_code
     context
   }))
 }

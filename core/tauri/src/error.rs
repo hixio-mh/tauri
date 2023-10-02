@@ -43,9 +43,6 @@ pub enum Error {
   /// Failed to serialize/deserialize.
   #[error("JSON error: {0}")]
   Json(#[from] serde_json::Error),
-  /// Failed to execute tauri API.
-  #[error("failed to execute API: {0}")]
-  FailedToExecuteApi(#[from] crate::api::Error),
   /// IO error.
   #[error("{0}")]
   Io(#[from] std::io::Error),
@@ -89,4 +86,25 @@ pub enum Error {
   #[cfg(target_os = "android")]
   #[error("jni error: {0}")]
   Jni(#[from] jni::errors::Error),
+  /// Failed to receive message .
+  #[error("failed to receive message")]
+  FailedToReceiveMessage,
+  /// Menu error.
+  #[error("menu error: {0}")]
+  #[cfg(desktop)]
+  Menu(#[from] muda::Error),
+  /// Bad menu icon error.
+  #[error(transparent)]
+  #[cfg(desktop)]
+  BadMenuIcon(#[from] muda::BadIcon),
+  /// Tray icon error.
+  #[error("tray icon error: {0}")]
+  #[cfg(all(desktop, feature = "tray-icon"))]
+  #[cfg_attr(doc_cfg, doc(cfg(all(desktop, feature = "tray-icon"))))]
+  Tray(#[from] tray_icon::Error),
+  /// Bad tray icon error.
+  #[error(transparent)]
+  #[cfg(all(desktop, feature = "tray-icon"))]
+  #[cfg_attr(doc_cfg, doc(cfg(all(desktop, feature = "tray-icon"))))]
+  BadTrayIcon(#[from] tray_icon::BadIcon),
 }

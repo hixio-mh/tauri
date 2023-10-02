@@ -1,6 +1,6 @@
 [package]
 name = "tauri-runtime-wry"
-version = "0.13.0-alpha.6"
+version = "1.0.0-alpha.2"
 description = "Wry bindings to the Tauri runtime"
 exclude = [ "CHANGELOG.md", "/target" ]
 readme = "README.md"
@@ -12,13 +12,17 @@ license = { workspace = true }
 edition = { workspace = true }
 rust-version = { workspace = true }
 
+[package.metadata.docs.rs]
+features = [ "dox" ]
+
 [dependencies]
-wry = { version = "0.30", default-features = false, features = [ "file-drop", "protocol" ] }
-tauri-runtime = { version = "0.13.0-alpha.6", path = "../tauri-runtime" }
-tauri-utils = { version = "2.0.0-alpha.6", path = "../tauri-utils" }
+wry = { version = "0.33", default-features = false, features = [ "tao", "file-drop", "protocol" ] }
+tauri-runtime = { version = "1.0.0-alpha.1", path = "../tauri-runtime" }
+tauri-utils = { version = "2.0.0-alpha.7", path = "../tauri-utils" }
 uuid = { version = "1", features = [ "v4" ] }
 rand = "0.8"
 raw-window-handle = "0.5"
+http = "0.2"
 
 [target."cfg(windows)".dependencies]
 webview2-com = "0.25"
@@ -36,16 +40,15 @@ percent-encoding = "2.1"
 cocoa = "0.24"
 
 [target."cfg(target_os = \"android\")".dependencies]
-jni = "0.20"
+jni = "0.21"
 
 [features]
 dox = [ "wry/dox" ]
 devtools = [ "wry/devtools", "tauri-runtime/devtools" ]
-system-tray = [ "tauri-runtime/system-tray", "wry/tray" ]
 macos-private-api = [
   "wry/fullscreen",
   "wry/transparent",
   "tauri-runtime/macos-private-api"
 ]
 objc-exception = [ "wry/objc-exception" ]
-linux-headers = [ ]
+linux-protocol-body = [ "wry/linux-body", "webkit2gtk/v2_40" ]

@@ -1,5 +1,21 @@
 # Changelog
 
+## \[2.0.0-alpha.8]
+
+### Enhancements
+
+- [`04949d16`](https://www.github.com/tauri-apps/tauri/commit/04949d16586acddab97a3c083a61c81b18d6933e)([#7624](https://www.github.com/tauri-apps/tauri/pull/7624)) Added Bulgarian language support to the NSIS bundler.
+
+## \[2.0.0-alpha.7]
+
+### Bug Fixes
+
+- [`3065c8ae`](https://www.github.com/tauri-apps/tauri/commit/3065c8aea375535763e1532951c4057a426fce80)([#7296](https://www.github.com/tauri-apps/tauri/pull/7296)) Enable `zip`'s `deflate` feature flag to fix issues when downloading nsis and wix tools.
+
+### Dependencies
+
+- Upgraded to `tauri-utils@2.0.0-alpha.7`
+
 ## \[2.0.0-alpha.6]
 
 ### Dependencies
