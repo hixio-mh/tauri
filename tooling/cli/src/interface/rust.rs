@@ -224,14 +224,14 @@ impl Interface for Rust {
   fn env(&self) -> HashMap<&str, String> {
     let mut env = HashMap::new();
     env.insert(
-      "TAURI_TARGET_TRIPLE",
+      "TAURI_ENV_TARGET_TRIPLE",
       self.app_settings.target_triple.clone(),
     );
 
     let mut s = self.app_settings.target_triple.split('-');
     let (arch, _, host) = (s.next().unwrap(), s.next().unwrap(), s.next().unwrap());
     env.insert(
-      "TAURI_ARCH",
+      "TAURI_ENV_ARCH",
       match arch {
         // keeps compatibility with old `std::env::consts::ARCH` implementation
         "i686" | "i586" => "x86".into(),
@@ -239,7 +239,7 @@ impl Interface for Rust {
       },
     );
     env.insert(
-      "TAURI_PLATFORM",
+      "TAURI_ENV_PLATFORM",
       match host {
         // keeps compatibility with old `std::env::consts::OS` implementation
         "darwin" => "macos".into(),
@@ -250,7 +250,7 @@ impl Interface for Rust {
     );
 
     env.insert(
-      "TAURI_FAMILY",
+      "TAURI_ENV_FAMILY",
       match host {
         "windows" => "windows".into(),
         _ => "unix".into(),
@@ -258,9 +258,9 @@ impl Interface for Rust {
     );
 
     match host {
-      "linux" => env.insert("TAURI_PLATFORM_TYPE", "Linux".into()),
-      "windows" => env.insert("TAURI_PLATFORM_TYPE", "Windows_NT".into()),
-      "darwin" => env.insert("TAURI_PLATFORM_TYPE", "Darwin".into()),
+      "linux" => env.insert("TAURI_ENV_PLATFORM_TYPE", "Linux".into()),
+      "windows" => env.insert("TAURI_ENV_PLATFORM_TYPE", "Windows_NT".into()),
+      "darwin" => env.insert("TAURI_ENV_PLATFORM_TYPE", "Darwin".into()),
       _ => None,
     };
 
@@ -306,11 +306,14 @@ fn build_ignore_matcher(dir: &Path) -> IgnoreMatcher {
 
       ignore_builder.add(path);
 
-      if let Ok(ignore_file) = std::env::var("TAURI_DEV_WATCHER_IGNORE_FILE") {
+      if let Ok(ignore_file) = std::env::var("TAURI_CLI_WATCHER_IGNORE_FILENAME") {
         ignore_builder.add(dir.join(ignore_file));
       }
 
-      for line in crate::dev::TAURI_DEV_WATCHER_GITIGNORE.lines().flatten() {
+      for line in crate::dev::TAURI_CLI_BUILTIN_WATCHER_IGNORE_FILE
+        .lines()
+        .flatten()
+      {
         let _ = ignore_builder.add_line(None, &line);
       }
 
@@ -328,14 +331,14 @@ fn lookup<F: FnMut(FileType, PathBuf)>(dir: &Path, mut f: F) {
   default_gitignore.push(".gitignore");
   if !default_gitignore.exists() {
     if let Ok(mut file) = std::fs::File::create(default_gitignore.clone()) {
-      let _ = file.write_all(crate::dev::TAURI_DEV_WATCHER_GITIGNORE);
+      let _ = file.write_all(crate::dev::TAURI_CLI_BUILTIN_WATCHER_IGNORE_FILE);
     }
   }
 
   let mut builder = ignore::WalkBuilder::new(dir);
   builder.add_custom_ignore_filename(".taurignore");
   let _ = builder.add_ignore(default_gitignore);
-  if let Ok(ignore_file) = std::env::var("TAURI_DEV_WATCHER_IGNORE_FILE") {
+  if let Ok(ignore_file) = std::env::var("TAURI_CLI_WATCHER_IGNORE_FILENAME") {
     builder.add_ignore(ignore_file);
   }
   builder.require_git(false).ignore(false).max_depth(Some(1));
@@ -1069,9 +1072,9 @@ fn tauri_config_to_bundle_settings(
     if enabled_features.contains(&"tray-icon".into())
       || enabled_features.contains(&"tauri/tray-icon".into())
     {
-      let (tray_kind, path) = std::env::var("TAURI_TRAY")
-        .map(|kind| {
-          if kind == "ayatana" {
+      let (tray_kind, path) = std::env::var("TAURI_LINUX_AYATANA_APPINDICATOR")
+        .map(|ayatana| {
+          if ayatana == "true" || ayatana == "1" {
             (
               pkgconfig_utils::TrayKind::Ayatana,
               format!(
@@ -1101,7 +1104,7 @@ fn tauri_config_to_bundle_settings(
         }
       }
 
-      std::env::set_var("TRAY_LIBRARY_PATH", path);
+      std::env::set_var("TAURI_TRAY_LIBRARY_PATH", path);
     }
 
     // provides `libwebkit2gtk-4.1.so.37` and all `4.0` versions have the -37 package name

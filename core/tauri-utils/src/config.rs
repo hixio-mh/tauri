@@ -842,6 +842,12 @@ pub struct BundleConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Color(pub u8, pub u8, pub u8, pub u8);
 
+impl From<Color> for (u8, u8, u8, u8) {
+  fn from(value: Color) -> Self {
+    (value.0, value.1, value.2, value.3)
+  }
+}
+
 /// The window effects configuration object
 #[skip_serializing_none]
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize, Default)]
@@ -959,6 +965,9 @@ pub struct WindowConfig {
   /// Whether the window should have borders and bars.
   #[serde(default = "default_true")]
   pub decorations: bool,
+  /// Whether the window should always be below other windows.
+  #[serde(default, alias = "always-on-bottom")]
+  pub always_on_bottom: bool,
   /// Whether the window should always be on top of other windows.
   #[serde(default, alias = "always-on-top")]
   pub always_on_top: bool,
@@ -1051,6 +1060,7 @@ impl Default for WindowConfig {
       maximized: false,
       visible: true,
       decorations: true,
+      always_on_bottom: false,
       always_on_top: false,
       visible_on_all_workspaces: false,
       content_protected: false,
@@ -1582,7 +1592,7 @@ pub struct TrayIconConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct IosConfig {
   /// The development team. This value is required for iOS development because code signing is enforced.
-  /// The `TAURI_APPLE_DEVELOPMENT_TEAM` environment variable can be set to overwrite it.
+  /// The `APPLE_DEVELOPMENT_TEAM` environment variable can be set to overwrite it.
   #[serde(alias = "development-team")]
   pub development_team: Option<String>,
 }
@@ -1701,17 +1711,17 @@ pub struct BuildConfig {
   pub dist_dir: AppUrl,
   /// A shell command to run before `tauri dev` kicks in.
   ///
-  /// The TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.
+  /// The TAURI_ENV_PLATFORM, TAURI_ENV_ARCH, TAURI_ENV_FAMILY, TAURI_ENV_PLATFORM_VERSION, TAURI_ENV_PLATFORM_TYPE and TAURI_ENV_DEBUG environment variables are set if you perform conditional compilation.
   #[serde(alias = "before-dev-command")]
   pub before_dev_command: Option<BeforeDevCommand>,
   /// A shell command to run before `tauri build` kicks in.
   ///
-  /// The TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.
+  /// The TAURI_ENV_PLATFORM, TAURI_ENV_ARCH, TAURI_ENV_FAMILY, TAURI_ENV_PLATFORM_VERSION, TAURI_ENV_PLATFORM_TYPE and TAURI_ENV_DEBUG environment variables are set if you perform conditional compilation.
   #[serde(alias = "before-build-command")]
   pub before_build_command: Option<HookCommand>,
   /// A shell command to run before the bundling phase in `tauri build` kicks in.
   ///
-  /// The TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.
+  /// The TAURI_ENV_PLATFORM, TAURI_ENV_ARCH, TAURI_ENV_FAMILY, TAURI_ENV_PLATFORM_VERSION, TAURI_ENV_PLATFORM_TYPE and TAURI_ENV_DEBUG environment variables are set if you perform conditional compilation.
   #[serde(alias = "before-bundle-command")]
   pub before_bundle_command: Option<HookCommand>,
   /// Features passed to `cargo` commands.
@@ -2197,6 +2207,9 @@ mod build {
         WindowEffect::MicaLight => quote! { #prefix::MicaLight},
         WindowEffect::Blur => quote! { #prefix::Blur},
         WindowEffect::Acrylic => quote! { #prefix::Acrylic},
+        WindowEffect::Tabbed => quote! { #prefix::Tabbed },
+        WindowEffect::TabbedDark => quote! { #prefix::TabbedDark },
+        WindowEffect::TabbedLight => quote! { #prefix::TabbedLight },
       })
     }
   }
@@ -2240,6 +2253,7 @@ mod build {
       let maximized = self.maximized;
       let visible = self.visible;
       let decorations = self.decorations;
+      let always_on_bottom = self.always_on_bottom;
       let always_on_top = self.always_on_top;
       let visible_on_all_workspaces = self.visible_on_all_workspaces;
       let content_protected = self.content_protected;
@@ -2281,6 +2295,7 @@ mod build {
         maximized,
         visible,
         decorations,
+        always_on_bottom,
         always_on_top,
         visible_on_all_workspaces,
         content_protected,

@@ -440,6 +440,11 @@
           "default": true,
           "type": "boolean"
         },
+        "alwaysOnBottom": {
+          "description": "Whether the window should always be below other windows.",
+          "default": false,
+          "type": "boolean"
+        },
         "alwaysOnTop": {
           "description": "Whether the window should always be on top of other windows.",
           "default": false,
@@ -794,6 +799,27 @@
           "type": "string",
           "enum": [
             "micaLight"
+          ]
+        },
+        {
+          "description": "Tabbed effect that matches the system dark perefence **Windows 11 Only**",
+          "type": "string",
+          "enum": [
+            "tabbed"
+          ]
+        },
+        {
+          "description": "Tabbed effect with dark mode but only if dark mode is enabled on the system **Windows 11 Only**",
+          "type": "string",
+          "enum": [
+            "tabbedDark"
+          ]
+        },
+        {
+          "description": "Tabbed effect with light mode **Windows 11 Only**",
+          "type": "string",
+          "enum": [
+            "tabbedLight"
           ]
         },
         {
@@ -1762,7 +1788,7 @@
       "type": "object",
       "properties": {
         "developmentTeam": {
-          "description": "The development team. This value is required for iOS development because code signing is enforced. The `TAURI_APPLE_DEVELOPMENT_TEAM` environment variable can be set to overwrite it.",
+          "description": "The development team. This value is required for iOS development because code signing is enforced. The `APPLE_DEVELOPMENT_TEAM` environment variable can be set to overwrite it.",
           "type": [
             "string",
             "null"
@@ -2140,7 +2166,7 @@
           ]
         },
         "beforeDevCommand": {
-          "description": "A shell command to run before `tauri dev` kicks in.\n\nThe TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.",
+          "description": "A shell command to run before `tauri dev` kicks in.\n\nThe TAURI_ENV_PLATFORM, TAURI_ENV_ARCH, TAURI_ENV_FAMILY, TAURI_ENV_PLATFORM_VERSION, TAURI_ENV_PLATFORM_TYPE and TAURI_ENV_DEBUG environment variables are set if you perform conditional compilation.",
           "anyOf": [
             {
               "$ref": "#/definitions/BeforeDevCommand"
@@ -2151,7 +2177,7 @@
           ]
         },
         "beforeBuildCommand": {
-          "description": "A shell command to run before `tauri build` kicks in.\n\nThe TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.",
+          "description": "A shell command to run before `tauri build` kicks in.\n\nThe TAURI_ENV_PLATFORM, TAURI_ENV_ARCH, TAURI_ENV_FAMILY, TAURI_ENV_PLATFORM_VERSION, TAURI_ENV_PLATFORM_TYPE and TAURI_ENV_DEBUG environment variables are set if you perform conditional compilation.",
           "anyOf": [
             {
               "$ref": "#/definitions/HookCommand"
@@ -2162,7 +2188,7 @@
           ]
         },
         "beforeBundleCommand": {
-          "description": "A shell command to run before the bundling phase in `tauri build` kicks in.\n\nThe TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.",
+          "description": "A shell command to run before the bundling phase in `tauri build` kicks in.\n\nThe TAURI_ENV_PLATFORM, TAURI_ENV_ARCH, TAURI_ENV_FAMILY, TAURI_ENV_PLATFORM_VERSION, TAURI_ENV_PLATFORM_TYPE and TAURI_ENV_DEBUG environment variables are set if you perform conditional compilation.",
           "anyOf": [
             {
               "$ref": "#/definitions/HookCommand"
