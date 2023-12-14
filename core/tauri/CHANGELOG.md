@@ -1,5 +1,20 @@
 # Changelog
 
+## \[2.0.0-alpha.19]
+
+### New Features
+
+- [`bf095df5`](https://www.github.com/tauri-apps/tauri/commit/bf095df55aa27fb22c9240ddf8d673cfe0a4a2db)([#8276](https://www.github.com/tauri-apps/tauri/pull/8276)) Exposed `Manager::resources_table` to access the resources table used by tauri, which could be used by plugins or app authors to store their resources and retrieve it later using an id.
+
+### Enhancements
+
+- [`5848b4e8`](https://www.github.com/tauri-apps/tauri/commit/5848b4e8e9fde1e0d895238cafdb57ed20be4c07)([#8386](https://www.github.com/tauri-apps/tauri/pull/8386)) Fixed the deserialisation of a `Channel` in iOS.
+- [`db127777`](https://www.github.com/tauri-apps/tauri/commit/db127777423e467758781d58c1121cbe94844161)([#8380](https://www.github.com/tauri-apps/tauri/pull/8380)) Added `test::get_ipc_response`.
+
+### Bug Fixes
+
+- [`f98ce5aa`](https://www.github.com/tauri-apps/tauri/commit/f98ce5aa475d1b3f8606e773579e77f41309feb0)([#8328](https://www.github.com/tauri-apps/tauri/pull/8328)) Fix incorrect menu item for `PredefinedMenuItem::close_window`
+
 ## \[2.0.0-alpha.18]
 
 ### Bug Fixes
