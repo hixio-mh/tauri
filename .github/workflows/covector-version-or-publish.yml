@@ -1,4 +1,8 @@
-name: version or publish
+# Copyright 2019-2023 Tauri Programme within The Commons Conservancy
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
+
+name: covector version or publish
 
 on:
   push:
@@ -6,6 +10,48 @@ on:
       - dev
 
 jobs:
+  run-integration-tests:
+    runs-on: ${{ matrix.platform }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: install stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: install Linux dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y webkit2gtk-4.1 libayatana-appindicator3-dev libfuse2
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core -> ../target
+            tooling/cli
+
+      - name: build CLI
+        run: cargo build --manifest-path ./tooling/cli/Cargo.toml
+
+      - name: run integration tests
+        run: cargo test --test '*' -- --ignored
+
+      - name: run CLI tests
+        timeout-minutes: 30
+        run: |
+          cd ./tooling/cli/node
+          yarn
+          yarn build
+          yarn test
+
   version-or-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 65
@@ -13,120 +59,89 @@ jobs:
       change: ${{ steps.covector.outputs.change }}
       commandRan: ${{ steps.covector.outputs.commandRan }}
       successfulPublish: ${{ steps.covector.outputs.successfulPublish }}
+    needs:
+      - run-integration-tests
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v1
+      - uses: actions/setup-node@v3
         with:
-          node-version: 14
+          node-version: 18
           registry-url: 'https://registry.npmjs.org'
+          cache: yarn
+          cache-dependency-path: tooling/*/yarn.lock
+
       - name: cargo login
-        run: cargo login ${{ secrets.crate_token }}
+        run: cargo login ${{ secrets.ORG_CRATES_IO_TOKEN }}
       - name: git config
         run: |
           git config --global user.name "${{ github.event.pusher.name }}"
           git config --global user.email "${{ github.event.pusher.email }}"
+
       - name: covector version or publish (publish when no change files present)
         uses: jbolda/covector/packages/action@covector-v0
         id: covector
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.ORG_NPM_TOKEN }}
           CARGO_AUDIT_OPTIONS: ${{ secrets.CARGO_AUDIT_OPTIONS }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           command: 'version-or-publish'
           createRelease: true
+
       - name: Create Pull Request With Versions Bumped
         if: steps.covector.outputs.commandRan == 'version'
-        uses: tauri-apps/create-pull-request@v3.4.1
+        uses: tauri-apps/create-pull-request@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: release/version-updates
           title: Apply Version Updates From Current Changes
-          commit-message: "apply version updates"
-          labels: "version updates"
+          commit-message: 'apply version updates'
+          labels: 'version updates'
           body: ${{ steps.covector.outputs.change }}
 
-  update-docs:
-    needs: version-or-publish
-    if: needs.version-or-publish.outputs.successfulPublish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout tauri
-        uses: actions/checkout@v2
+      - name: Trigger doc update
+        if: |
+          steps.covector.outputs.successfulPublish == 'true' &&
+          steps.covector.outputs.packagesPublished != ''
+        uses: peter-evans/repository-dispatch@v1
         with:
-          path: tauri
-      - name: checkout tauri-docs
-        uses: actions/checkout@v2
-        with:
+          token: ${{ secrets.ORG_TAURI_BOT_PAT }}
           repository: tauri-apps/tauri-docs
-          path: tauri-docs
-      - name: install webkit2gtk
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y webkit2gtk-4.0
-      - name: generate rust docs
-        working-directory: tauri
-        run: cargo doc --no-deps
-      - name: run rustdocusaurus
-        uses: tauri-apps/rustdocusaurus/github-action@v1
-        with:
-          originPath: ./tauri/target/doc/
-          targetPath: ./tauri-docs/docs/en/api/rust/
-          sidebarPath: ./tauri-docs/sidebars.json
-          linksRoot: /docs/api/rust/
-          cratesToProcess: "tauri,tauri_api,tauri_utils"
-      - name: git config
-        run: |
-          git config --global user.name "${{ github.event.pusher.name }}"
-          git config --global user.email "${{ github.event.pusher.email }}"
-      - name: create pull request for updated docs
-        uses: tauri-apps/create-pull-request@v3.4.1
-        with:
-          token: ${{ secrets.TAURI_BOT_PAT }}
-          commit-message: "chore(docs): Update Rust docs"
-          branch: docs/release
-          path: tauri-docs
-          title: Update Docs
-          labels: "new release"
-          body: |
-            These are the updated docs from the most recent release.
+          event-type: update-docs
 
-  tangle:
-    runs-on: ubuntu-latest
-    needs: version-or-publish
-    if: needs.version-or-publish.outputs.successfulPublish == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - name: tauri.js
-            registryName: tauri
-          - name: tauri-bundler
-            registryName: tauri-bundler
-          - name: tauri-utils
-            registryName: tauri-utils
-          - name: tauri-api
-            registryName: tauri-api
-          - name: tauri-updater
-            registryName: tauri-updater
-          - name: tauri-core
-            registryName: tauri
-
-    steps:
-      - uses: actions/checkout@v2
-      - run: echo ::set-env name=PUBLISHED::$(jq '.${{ matrix.package.name }}.command' ${{ needs.version-or-publish.outputs.change }})
-      - run: echo ::set-env name=PACKAGE_VERSION::$(jq '.${{ matrix.package.name }}.pkg.pkgFile.version' ${{ needs.version-or-publish.outputs.change }})
-      - name: Tangle Release
-        if:  env.PUBLISHED != 'false' && startsWith(env.PUBLISHED, 'parse error') != true && startsWith(env.PACKAGE_VERSION, 'parse error') != true
-        id: tangle_release
-        uses: iotaledger/gh-tangle-release@v0.6.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IOTA_SEED: ${{ secrets.IOTA_SEED }}
-          IOTA_NODE: "https://iotanode.us:14267"
+      - name: Get `@tauri-apps/cli` release id
+        uses: actions/github-script@v6
+        id: cliReleaseId
+        if: |
+          steps.covector.outputs.successfulPublish == 'true' &&
+          contains(steps.covector.outputs.packagesPublished, '@tauri-apps/cli')
         with:
-          tag_name: ${{ matrix.package.name }}-v${{ env.PACKAGE_VERSION }}
-          comment: "Release ${{ matrix.package.name }} v${{ env.PACKAGE_VERSION }}"
+          result-encoding: string
+          script: |
+            const output = `${{ toJSON(steps.covector.outputs) }}`;
+            const [_, id] = /"-tauri-apps-cli-releaseId": "([0-9]+)"/g.exec(output);
+            return id;
+
+      - name: Trigger `@tauri-apps/cli` publishing workflow
+        if: |
+          steps.covector.outputs.successfulPublish == 'true' &&
+          contains(steps.covector.outputs.packagesPublished, '@tauri-apps/cli')
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.ORG_TAURI_BOT_PAT }}
+          repository: tauri-apps/tauri
+          event-type: publish-js-cli
+          client-payload: '{"releaseId": "${{ steps.cliReleaseId.outputs.result }}" }'
+
+      - name: Trigger `tauri-cli` publishing workflow
+        if: |
+          steps.covector.outputs.successfulPublish == 'true' &&
+          contains(steps.covector.outputs.packagesPublished, 'tauri-cli')
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.ORG_TAURI_BOT_PAT }}
+          repository: tauri-apps/tauri
+          event-type: publish-clirs

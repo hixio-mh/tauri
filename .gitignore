@@ -5,6 +5,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# smoke-tests repo
+/smoke-tests
+
 # Runtime data
 pids
 *.pid
@@ -66,27 +69,21 @@ package-lock.json
 proptest-regressions/
 TODO.md
 
-
-# Tauri output
-/bundle.json
-/config.json
-/src-tauri
-
 # rust compiled folders
 target
 
 # lock for libs
-Cargo.lock
-yarn.lock
-
-/cli/tauri.js/test/jest/tmp
-
-# doing this because of how our tests currently (naively) drop the tauri.conf.js in that folder
-# todo: needs a proper fic
-/cli/tauri.js/tauri.conf.js
-
-# doing this because the task-runner (`mask prepare`) will clone gh:tauri-apps/examples
-/examples
+/Cargo.lock
+/tooling/bench/tests/Cargo.lock
+/yarn.lock
 
 # ignore frida handlers
 __handlers__/
+
+# benches
+gh-pages
+test_video.mp4
+
+# old cli directories
+/tooling/cli.js
+/tooling/cli.rs

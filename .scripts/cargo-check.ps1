@@ -1,4 +1,9 @@
 #!/usr/bin/env pwsh
+
+# Copyright 2019-2023 Tauri Programme within The Commons Conservancy
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
+
 # note: you can pass in the cargo sub-commands used to check manually.
 # allowed commands: check, clippy, fmt, test
 # default: clippy, fmt, test
@@ -15,40 +20,31 @@ function check_error {
   }
 }
 
-# run n+1 times, where n is the amount of mutually exclusive features.
-# the extra run is for all the crates without mutually exclusive features.
-# as many features as possible are enabled at for each command
-function mutex {
+function run {
   $command, $_args = $args
 
-  foreach ($feature in @("no-server","embedded-server")) {
-    Write-Output "[$command][$feature] tauri"
-    cargo $command --manifest-path tauri/Cargo.toml --all-targets --features "$feature,cli,all-api" $_args
-    check_error
-  }
-
-  Write-Output "[$command] other crates"
-  cargo $command --workspace --exclude tauri --all-targets --all-features $_args
+  Write-Output "[$command]"
+  cargo $command --workspace --all-targets --all-features $_args
   check_error
 }
 
 foreach ($command in $args) {
   Switch ($command) {
     "check" {
-      mutex check
+      run check
       break
     }
     "test" {
-      mutex test
+      run test
       break
     }
     "clippy" {
-      mutex clippy "--" -D warnings
+      run clippy "--" -D warnings
       break
     }
     "fmt" {
       Write-Output "[$command] checking formatting"
-      cargo fmt "--" --check
+      cargo +nightly fmt "--" --check
       check_error
     }
     default {

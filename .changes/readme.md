@@ -2,7 +2,7 @@
 
 ##### via https://github.com/jbolda/covector
 
-As you create PRs and make changes that require a version bump, please add a new markdown file in this folder. You do not note the version _number_, but rather the type of bump that you expect: major, minor, or patch. The filename is not important, as long as it is a `.md`, but we recommend it represents the overall change for our sanity.
+As you create PRs and make changes that require a version bump, please add a new markdown file in this folder. You do not note the version _number_, but rather the type of bump that you expect: major, minor, or patch. The filename is not important, as long as it is a `.md`, but we recommend that it represents the overall change for organizational purposes.
 
 When you select the version bump required, you do _not_ need to consider dependencies. Only note the package with the actual change, and any packages that depend on that package will be bumped automatically in the process.
 
@@ -10,8 +10,8 @@ Use the following format:
 
 ```md
 ---
-"tauri.js": patch
-"tauri": minor
+'package-a': 'patch:enhance'
+'package-b': 'patch:enhance'
 ---
 
 Change summary goes here
@@ -28,3 +28,17 @@ Given a version number MAJOR.MINOR.PATCH, increment the:
 - PATCH version when you make backwards compatible bug fixes.
 
 Additional labels for pre-release and build metadata are available as extensions to the MAJOR.MINOR.PATCH format, but will be discussed prior to usage (as extra steps will be necessary in consideration of merging and publishing).
+
+Additionally you could specify a tag for the change file to group it with other changes by prefixing the bump with `:<tag>`, for example:
+
+```md
+---
+'package-a': 'patch:enhance'
+---
+
+Change summary goes here
+```
+
+which will group this change file with other changes that specify the `bug` tag.
+
+For list of available tags, see the `changeTags` key in [./config.json](./config.json)
