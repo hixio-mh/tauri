@@ -65,6 +65,7 @@ pub use cocoa;
 #[doc(hidden)]
 pub use embed_plist;
 pub use error::{Error, Result};
+pub use resources::{Resource, ResourceId, ResourceTable};
 #[cfg(target_os = "ios")]
 #[doc(hidden)]
 pub use swift_rs;
@@ -82,6 +83,7 @@ mod manager;
 mod pattern;
 pub mod plugin;
 pub(crate) mod protocol;
+mod resources;
 mod vibrancy;
 pub mod window;
 use tauri_runtime as runtime;
@@ -114,15 +116,30 @@ pub type Wry = tauri_runtime_wry::Wry<EventLoopMessage>;
 #[macro_export]
 macro_rules! android_binding {
   ($domain:ident, $package:ident, $main: ident, $wry: path) => {
-    ::tauri::wry::android_binding!($domain, $package, $main, $wry);
-    ::tauri::wry::application::android_fn!(
+    use $wry::{
+      android_setup,
+      prelude::{JClass, JNIEnv, JString},
+    };
+
+    ::tauri::wry::android_binding!($domain, $package, $wry);
+
+    ::tauri::tao::android_binding!(
+      $domain,
+      $package,
+      WryActivity,
+      android_setup,
+      $main,
+      ::tauri::tao
+    );
+
+    ::tauri::tao::platform::android::prelude::android_fn!(
       app_tauri,
       plugin,
       PluginManager,
       handlePluginResponse,
       [i32, JString, JString],
     );
-    ::tauri::wry::application::android_fn!(
+    ::tauri::tao::platform::android::prelude::android_fn!(
       app_tauri,
       plugin,
       PluginManager,
@@ -155,15 +172,16 @@ macro_rules! android_binding {
 pub use plugin::mobile::{handle_android_plugin_response, send_channel_data};
 #[cfg(all(feature = "wry", target_os = "android"))]
 #[doc(hidden)]
-pub use tauri_runtime_wry::wry;
+pub use tauri_runtime_wry::{tao, wry};
 
 /// A task to run on the main thread.
 pub type SyncTask = Box<dyn FnOnce() + Send>;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
   collections::HashMap,
   fmt::{self, Debug},
+  sync::MutexGuard,
 };
 
 #[cfg(feature = "wry")]
@@ -808,6 +826,11 @@ pub trait Manager<R: Runtime>: sealed::ManagerBase<R> {
     self.manager().state.try_get()
   }
 
+  /// Get a reference to the resources table.
+  fn resources_table(&self) -> MutexGuard<'_, ResourceTable> {
+    self.manager().resources_table()
+  }
+
   /// Gets the managed [`Env`].
   fn env(&self) -> Env {
     self.state::<Env>().inner().clone()
@@ -864,10 +887,9 @@ pub mod test;
 #[cfg(test)]
 mod tests {
   use cargo_toml::Manifest;
-  use once_cell::sync::OnceCell;
-  use std::{env::var, fs::read_to_string, path::PathBuf};
+  use std::{env::var, fs::read_to_string, path::PathBuf, sync::OnceLock};
 
-  static MANIFEST: OnceCell<Manifest> = OnceCell::new();
+  static MANIFEST: OnceLock<Manifest> = OnceLock::new();
   const CHECKED_FEATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/checked_features"));
 
   fn get_manifest() -> &'static Manifest {
@@ -899,6 +921,40 @@ mod tests {
           "Feature {checked_feature} was checked in the alias build step but it does not exist in core/tauri/Cargo.toml"
         );
       }
+    }
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(crate) enum IconDto {
+  #[cfg(any(feature = "icon-png", feature = "icon-ico"))]
+  File(std::path::PathBuf),
+  #[cfg(any(feature = "icon-png", feature = "icon-ico"))]
+  Raw(Vec<u8>),
+  Rgba {
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+  },
+}
+
+impl From<IconDto> for Icon {
+  fn from(icon: IconDto) -> Self {
+    match icon {
+      #[cfg(any(feature = "icon-png", feature = "icon-ico"))]
+      IconDto::File(path) => Self::File(path),
+      #[cfg(any(feature = "icon-png", feature = "icon-ico"))]
+      IconDto::Raw(raw) => Self::Raw(raw),
+      IconDto::Rgba {
+        rgba,
+        width,
+        height,
+      } => Self::Rgba {
+        rgba,
+        width,
+        height,
+      },
     }
   }
 }
